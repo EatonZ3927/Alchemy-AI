@@ -1,0 +1,61 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #6bfe9c;
+  --color-primary-dim: #5bef90;
+  --color-on-primary: #005f2f;
+  --color-surface: #0e0e0e;
+  --color-surface-container: #1a1919;
+  --color-surface-container-low: #131313;
+  --color-surface-container-high: #201f1f;
+  --color-surface-container-highest: #262626;
+  --color-surface-variant: #262626;
+  --color-on-surface: #ffffff;
+  --color-on-surface-variant: #adaaaa;
+  --color-outline-variant: #494847;
+  --color-tertiary: #8af2ff;
+
+  --font-headline: "Manrope", sans-serif;
+  --font-body: "Inter", sans-serif;
+  --font-label: "Inter", sans-serif;
+}
+
+body {
+  background-color: var(--color-surface);
+  color: var(--color-on-surface);
+  font-family: var(--font-body);
+  min-height: 100vh;
+}
+
+@layer utilities {
+  .glass-panel {
+    background: rgba(38, 38, 38, 0.4);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+  }
+  
+  .glass-effect {
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+  .emerald-glow {
+    box-shadow: 0 0 40px rgba(107, 254, 156, 0.1);
+  }
+
+  .ai-pulse-bg {
+    background: radial-gradient(circle at center, rgba(107, 254, 156, 0.08) 0%, transparent 70%);
+  }
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-surface);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-variant);
+  border-radius: 10px;
+}

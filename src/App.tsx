@@ -117,12 +117,19 @@ export default function App() {
         };
         setMessages(prev => [...prev, aiMsg]);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("AI Generation Error:", error);
+      let errorMessage = '抱歉，炼金术士的熔炉暂时熄火了，请稍后再试。';
+      
+      const errorString = error?.message || String(error);
+      if (error?.status === 429 || errorString.includes('429') || errorString.includes('RESOURCE_EXHAUSTED') || errorString.includes('quota')) {
+        errorMessage = '您的 API 调用额度已耗尽 (429 RESOURCE_EXHAUSTED)。请检查您的计费详情或稍后再试。';
+      }
+
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: 'ai',
-        content: '抱歉，炼金术士的熔炉暂时熄火了，请稍后再试。',
+        content: errorMessage,
       };
       setMessages(prev => [...prev, errorMsg]);
     } finally {

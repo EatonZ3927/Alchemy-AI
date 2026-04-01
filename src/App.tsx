@@ -5,7 +5,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Paperclip, Sparkles, Globe, Languages, Copy, Mic, Layers, Check, ArrowLeft } from 'lucide-react';
+import { Paperclip, Sparkles, Globe, Languages, Copy, Mic, Layers, Check, ArrowLeft, ExternalLink } from 'lucide-react';
 import { GoogleGenAI, Type } from '@google/genai';
 
 type Message = {
@@ -16,6 +16,7 @@ type Message = {
   modelType?: string;
   reasoning?: string;
   prompt?: string;
+  chatboxUrl?: string;
 };
 
 const FlaskIcon = () => (
@@ -76,9 +77,8 @@ export default function App() {
 
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: `你是一个名为"炼金术 AI"的顶级提示词工程师。用户会输入一个简单的想法或需求。
+      
+      const systemInstruction = `你是一个名为"炼金术 AI"的顶级提示词工程师。用户会输入一个简单的想法、需求或对之前提示词的修改意见。
 你需要分析这个需求是需要生成文本、图片还是视频。
 然后推荐一个最适合该任务的业界顶尖AI模型。
 注意：
@@ -87,9 +87,33 @@ export default function App() {
 3. 对于文本生成任务，可正常推荐业界顶尖模型（如 Claude 3.5 Sonnet, GPT-4o, DeepSeek, Kimi, 豆包 等）。
 接着，给出推荐理由。
 最后，为该模型撰写一段极具专业水准、结构清晰、能最大化发挥该模型能力的优化后提示词。**生成的优化后提示词必须使用中文描述。**
+此外，请提供该推荐大模型的直接可以对话/使用的Chatbox网址或官方网址（chatboxUrl）。`;
 
-用户需求：${userText}`,
+      const historyContents = messages.map(msg => ({
+        role: msg.role === 'ai' ? 'model' : 'user',
+        parts: [{ 
+          text: msg.role === 'ai' 
+            ? JSON.stringify({
+                modelName: msg.model,
+                modelType: msg.modelType,
+                reasoning: msg.reasoning,
+                optimizedPrompt: msg.prompt,
+                chatboxUrl: msg.chatboxUrl
+              }) 
+            : msg.content 
+        }]
+      }));
+
+      historyContents.push({
+        role: 'user',
+        parts: [{ text: `用户需求/追问：${userText}` }]
+      });
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.1-pro-preview',
+        contents: historyContents,
         config: {
+          systemInstruction,
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -97,9 +121,10 @@ export default function App() {
               modelName: { type: Type.STRING, description: "推荐的模型名称" },
               modelType: { type: Type.STRING, description: "模型类型，如 'TEXT', 'IMAGE', 'VIDEO'" },
               reasoning: { type: Type.STRING, description: "推荐理由" },
-              optimizedPrompt: { type: Type.STRING, description: "优化后的提示词" }
+              optimizedPrompt: { type: Type.STRING, description: "优化后的提示词" },
+              chatboxUrl: { type: Type.STRING, description: "该大模型的Chatbox/直接使用网址或官方网址" }
             },
-            required: ["modelName", "modelType", "reasoning", "optimizedPrompt"]
+            required: ["modelName", "modelType", "reasoning", "optimizedPrompt", "chatboxUrl"]
           }
         }
       });
@@ -114,6 +139,101 @@ export default function App() {
           modelType: result.modelType,
           reasoning: result.reasoning,
           prompt: result.optimizedPrompt,
+          chatboxUrl: result.chatboxUrl,
+        };
+        setMessages(prev => [...prev, aiMsg]);
+      }
+    } catch (error: any) {
+      console.error("AI Generation Error:", error);
+      let errorMessage = '抱歉，炼金术士的熔炉暂时熄火了，请稍后再试。';
+      
+      const errorString = error?.message || String(error);
+      if (error?.status === 429 || errorString.includes('429') || errorString.includes('RESOURCE_EXHAUSTED') || errorString.includes('quota')) {
+        errorMessage = '您的 API 调用额度已耗尽 (429 RESOURCE_EXHAUSTED)。请检查您的计费详情或稍后再试。';
+      }
+
+      const errorMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'ai',
+        content: errorMessage,
+      };
+      setMessages(prev => [...prev, errorMsg]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  const handleSummarize = async () => {
+    if (messages.length === 0 || isTyping) return;
+
+    const summaryRequestText = "请总结并精炼以上所有对话中的提示词，识别几次答案中的重复项，整合为一个最终的、最完美的提示词版本。";
+    const newUserMsg: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: summaryRequestText,
+    };
+
+    setMessages(prev => [...prev, newUserMsg]);
+    setIsTyping(true);
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      
+      const systemInstruction = `你是一个名为"炼金术 AI"的顶级提示词工程师。用户要求你总结之前所有的提示词版本。
+请回顾之前的对话历史，识别几次答案中的重复项，将它们精炼并整合为一个最终的、最完美的提示词版本。
+保持与之前相同的JSON输出格式。推荐模型可以保持为最近一次推荐的模型。`;
+
+      const historyContents = messages.map(msg => ({
+        role: msg.role === 'ai' ? 'model' : 'user',
+        parts: [{ 
+          text: msg.role === 'ai' 
+            ? JSON.stringify({
+                modelName: msg.model,
+                modelType: msg.modelType,
+                reasoning: msg.reasoning,
+                optimizedPrompt: msg.prompt,
+                chatboxUrl: msg.chatboxUrl
+              }) 
+            : msg.content 
+        }]
+      }));
+
+      historyContents.push({
+        role: 'user',
+        parts: [{ text: `用户需求/追问：${summaryRequestText}` }]
+      });
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.1-pro-preview',
+        contents: historyContents,
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              modelName: { type: Type.STRING, description: "推荐的模型名称" },
+              modelType: { type: Type.STRING, description: "模型类型，如 'TEXT', 'IMAGE', 'VIDEO'" },
+              reasoning: { type: Type.STRING, description: "总结与精炼的理由" },
+              optimizedPrompt: { type: Type.STRING, description: "最终整合精炼后的提示词" },
+              chatboxUrl: { type: Type.STRING, description: "该大模型的Chatbox/直接使用网址或官方网址" }
+            },
+            required: ["modelName", "modelType", "reasoning", "optimizedPrompt", "chatboxUrl"]
+          }
+        }
+      });
+
+      if (response.text) {
+        const result = JSON.parse(response.text);
+        const aiMsg: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'ai',
+          content: '',
+          model: result.modelName,
+          modelType: result.modelType,
+          reasoning: result.reasoning,
+          prompt: result.optimizedPrompt,
+          chatboxUrl: result.chatboxUrl,
         };
         setMessages(prev => [...prev, aiMsg]);
       }
@@ -215,13 +335,6 @@ export default function App() {
   return (
     <div className="bg-background text-on-surface font-body selection:bg-primary selection:text-on-primary min-h-screen flex flex-col">
       <header className="fixed top-0 left-0 w-full h-14 bg-surface/80 glass-effect border-b border-outline-variant/10 z-50 flex items-center px-4">
-        <button 
-          onClick={() => setMessages([])}
-          className="absolute left-4 p-2 text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1"
-        >
-          <ArrowLeft className="w-5 h-5" />
-          <span className="text-xs font-bold uppercase tracking-widest hidden md:inline">返回</span>
-        </button>
         <h1 className="text-[#00FF41] font-headline font-extrabold tracking-widest text-sm uppercase mx-auto">炼金术士AI工作坊</h1>
       </header>
 
@@ -273,6 +386,21 @@ export default function App() {
                               <p className="text-sm text-on-surface-variant leading-relaxed">{msg.reasoning}</p>
                             </div>
 
+                            {msg.chatboxUrl && (
+                              <div className="flex flex-wrap gap-3">
+                                <a 
+                                  href={msg.chatboxUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 border border-primary/20 rounded-lg text-xs text-primary transition-colors"
+                                >
+                                  <Sparkles className="w-3.5 h-3.5" />
+                                  <span>打开 Chatbox 或官网</span>
+                                  <ExternalLink className="w-3 h-3 opacity-70" />
+                                </a>
+                              </div>
+                            )}
+
                             <div className="group relative rounded-xl bg-surface-container-highest border border-primary/10 overflow-hidden">
                               <div className="flex items-center justify-between px-4 py-3 bg-surface-container-highest border-b border-outline-variant/10">
                                 <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">优化后的提示词</span>
@@ -319,7 +447,24 @@ export default function App() {
       </main>
 
       <div className="fixed bottom-0 left-0 w-full p-4 md:p-8 bg-gradient-to-t from-background via-background/95 to-transparent z-40">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-4xl mx-auto flex flex-col gap-3">
+          <div className="flex justify-center gap-4">
+            <button 
+              onClick={() => setMessages([])}
+              className="flex items-center justify-center gap-2 px-8 py-2.5 min-w-[160px] bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/20 rounded-full text-xs font-bold uppercase tracking-widest text-on-surface-variant hover:text-primary transition-colors shadow-sm"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>开启新对话</span>
+            </button>
+            <button 
+              onClick={handleSummarize}
+              disabled={isTyping || messages.length === 0}
+              className="flex items-center justify-center gap-2 px-8 py-2.5 min-w-[160px] bg-primary/10 hover:bg-primary/20 border border-primary/30 rounded-full text-xs font-bold uppercase tracking-widest text-primary transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>总结提示词</span>
+            </button>
+          </div>
           <div className="glass-effect bg-[#262626]/60 rounded-2xl border border-[#494847]/20 shadow-2xl p-2 flex flex-col md:flex-row items-stretch md:items-center gap-2">
             <div className="flex-grow relative">
               <textarea
@@ -327,7 +472,7 @@ export default function App() {
                 onChange={handleInput}
                 onKeyDown={handleKeyDown}
                 className="w-full bg-transparent border-none focus:ring-0 focus:outline-none text-on-surface placeholder:text-on-surface-variant px-4 py-3 resize-none max-h-32 text-sm"
-                placeholder="让炼金术 AI 为您合成提示词或建议..."
+                placeholder="继续追问或修改提示词..."
                 rows={1}
               />
             </div>

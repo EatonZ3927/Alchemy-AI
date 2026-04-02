@@ -82,9 +82,11 @@ export default function App() {
 你需要分析这个需求是需要生成文本、图片还是视频。
 然后推荐一个最适合该任务的业界顶尖AI模型。
 注意：
-1. 对于视频生成任务，请**务必只推荐中国本土的视频大模型**（例如：seedance, 即梦AI, 可灵Kling, 智谱清影等），**绝对不要推荐任何欧美AI平台**（如 Sora, Runway, Pika, Veo, Flow 等）。
+1. 对于视频生成任务，请**优先推荐"即梦AI"**，其官方网址必须固定为：https://jimeng.jianying.com/ai-tool/home?type=agentic&workspace=0 。如果特定需求不适合，请**第二优先级推荐"可灵AI"**，其官方网址必须固定为：https://klingai.com/app/ 。**绝对不要推荐任何欧美AI平台**（如 Sora, Runway, Pika, Veo, Flow 等）。
 2. 对于图片生成任务，请**优先推荐中国本土的生图大模型**（例如：即梦AI, 豆包AI, 通义万相, 文心一格等），**尽量避免推荐欧美生图AI**（如 Midjourney, DALL-E 3, Stable Diffusion 等）。
 3. 对于文本生成任务，可正常推荐业界顶尖模型（如 Claude 3.5 Sonnet, GPT-4o, DeepSeek, Kimi, 豆包 等）。
+4. 在为视频和图片生成任务撰写提示词时，如果涉及画质或分辨率的描述，请务必使用"4K分辨率"，绝对不要使用"8K分辨率"或更高。
+5. 在撰写优化后的提示词时，必须将提示词中的分类描述标题（例如"主体描述"、"环境背景"、"镜头语言"、"风格设定"等）用【】符号强调（如【主体描述】）。并且，每种分类描述完成后，必须先换行（使用\\n），再开始下一个分类描述。此规则适用于所有类型（文本、图片、视频）的提示词。
 接着，给出推荐理由。
 最后，为该模型撰写一段极具专业水准、结构清晰、能最大化发挥该模型能力的优化后提示词。**生成的优化后提示词必须使用中文描述。**
 此外，请提供该推荐大模型的直接可以对话/使用的Chatbox网址或官方网址（chatboxUrl）。`;
@@ -181,6 +183,10 @@ export default function App() {
       
       const systemInstruction = `你是一个名为"炼金术 AI"的顶级提示词工程师。用户要求你总结之前所有的提示词版本。
 请回顾之前的对话历史，识别几次答案中的重复项，将它们精炼并整合为一个最终的、最完美的提示词版本。
+注意：
+1. 在为视频和图片生成任务撰写最终提示词时，如果涉及画质或分辨率的描述，请务必使用"4K分辨率"，绝对不要使用"8K分辨率"或更高。
+2. 如果最终推荐的是视频模型"即梦AI"，其网址必须固定为：https://jimeng.jianying.com/ai-tool/home?type=agentic&workspace=0 ；如果是"可灵AI"，网址必须固定为：https://klingai.com/app/ 。
+3. 在撰写最终的提示词时，必须将提示词中的分类描述标题（例如"主体描述"、"环境背景"、"镜头语言"、"风格设定"等）用【】符号强调（如【主体描述】）。并且，每种分类描述完成后，必须先换行（使用\\n），再开始下一个分类描述。此规则适用于所有类型（文本、图片、视频）的提示词。
 保持与之前相同的JSON输出格式。推荐模型可以保持为最近一次推荐的模型。`;
 
       const historyContents = messages.map(msg => ({
@@ -304,18 +310,13 @@ export default function App() {
                   placeholder="输入你的灵感，开始炼制..."
                   rows={1}
                 />
-                <div className="flex items-center justify-between px-4 pb-3">
-                  <div className="flex items-center gap-2">
-                    <button className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-container transition-colors text-on-surface-variant">
-                      <Paperclip className="w-5 h-5" />
-                    </button>
-                  </div>
+                <div className="flex items-center justify-end px-4 pb-3">
                   <button 
                     onClick={handleSubmit}
                     disabled={!inputValue.trim()}
                     className="flex items-center gap-2 px-6 py-2.5 bg-primary text-on-primary rounded-full font-label tracking-widest uppercase text-sm font-bold active:scale-95 transition-all shadow-lg shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    合成
+                    炼制
                     <Sparkles className="w-4 h-4 fill-current" />
                   </button>
                 </div>
@@ -366,16 +367,6 @@ export default function App() {
                               <div className="flex items-center gap-2">
                                 <h3 className="text-xl font-headline font-bold text-primary">{msg.model}</h3>
                                 <span className="bg-tertiary/10 text-tertiary text-[10px] px-2 py-0.5 rounded-full border border-tertiary/20">{msg.modelType || 'PRO'}</span>
-                              </div>
-                            </div>
-                            <div className="flex gap-2">
-                              <div className="flex items-center gap-1 bg-surface-container-highest px-3 py-1.5 rounded-full text-xs text-on-surface-variant border border-outline-variant/10">
-                                <Globe className="w-3.5 h-3.5" />
-                                <span>EN</span>
-                              </div>
-                              <div className="flex items-center gap-1 bg-surface-container-highest px-3 py-1.5 rounded-full text-xs text-on-surface-variant border border-outline-variant/10">
-                                <Languages className="w-3.5 h-3.5" />
-                                <span>CN</span>
                               </div>
                             </div>
                           </div>
@@ -476,20 +467,7 @@ export default function App() {
                 rows={1}
               />
             </div>
-            <div className="flex items-center justify-between md:justify-end gap-3 px-2 md:px-0 pb-2 md:pb-0">
-              <div className="flex items-center gap-1">
-                <button className="p-2 text-on-surface-variant hover:text-primary transition-colors">
-                  <Paperclip className="w-5 h-5" />
-                </button>
-                <button className="p-2 text-on-surface-variant hover:text-primary transition-colors">
-                  <Mic className="w-5 h-5" />
-                </button>
-                <div className="w-px h-6 bg-outline-variant/20 mx-1"></div>
-                <button className="p-2 text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1">
-                  <Layers className="w-5 h-5" />
-                  <span className="text-[10px] font-bold uppercase tracking-tighter hidden md:inline">自动</span>
-                </button>
-              </div>
+            <div className="flex items-center justify-end px-2 md:px-0 pb-2 md:pb-0">
               <button 
                 onClick={handleSubmit}
                 disabled={!inputValue.trim()}

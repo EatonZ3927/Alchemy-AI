@@ -6,7 +6,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Paperclip, Sparkles, Globe, Languages, Copy, Mic, Layers, Check, ArrowLeft, ExternalLink } from 'lucide-react';
-import { GoogleGenAI, Type } from '@google/genai';
+import OpenAI from 'openai';
 
 type Message = {
   id: string;
@@ -37,6 +37,26 @@ const FlaskIcon = () => (
   </svg>
 );
 
+const systemPrompt = `你是一个名为"炼金术 AI"的顶级提示词工程师。用户会输入一个简单的想法、需求或对之前提示词的修改意见。
+你需要分析这个需求是需要生成文本、图片还是视频。
+然后推荐一个最适合该任务的业界顶尖AI模型。
+注意：
+1. 对于视频生成任务，请**优先推荐"即梦AI"**，其官方网址必须固定为：https://jimeng.jianying.com/ai-tool/home?type=agentic&workspace=0 。如果特定需求不适合，请**第二优先级推荐"可灵AI"**，其官方网址必须固定为：https://klingai.com/app/ 。**绝对不要推荐任何欧美AI平台**（如 Sora, Runway, Pika, Veo, Flow 等）。
+2. 对于图片生成任务，请**优先推荐中国本土的生图大模型**（例如：即梦AI, 豆包AI, 通义万相, 文心一格等），**尽量避免推荐欧美生图AI**（如 Midjourney, DALL-E 3, Stable Diffusion 等）。
+3. 对于文本生成任务，可正常推荐业界顶尖模型（如 Claude 3.5 Sonnet, GPT-4o, DeepSeek, Kimi, 豆包 等）。
+4. 在为视频和图片生成任务撰写提示词时，如果涉及画质或分辨率的描述，请务必使用"4K分辨率"，绝对不要使用"8K分辨率"或更高。
+5. 在撰写优化后的提示词时，必须将提示词中的分类描述标题（例如"主体描述"、"环境背景"、"镜头语言"、"风格设定"等）用【】符号强调（如【主体描述】）。并且，每种分类描述完成后，必须先换行（使用\\n），再开始下一个分类描述。此规则适用于所有类型（文本、图片、视频）的提示词。
+接着，给出推荐理由。
+最后，为该模型撰写一段极具专业水准、结构清晰、能最大化发挥该模型能力的优化后提示词。**生成的优化后提示词必须使用中文描述。**
+此外，请提供该推荐大模型的直接可以对话/使用的Chatbox网址或官方网址（chatboxUrl）。
+
+请以JSON格式输出，包含以下字段：
+- modelName: 推荐的模型名称
+- modelType: 模型类型，如 'TEXT', 'IMAGE', 'VIDEO'
+- reasoning: 推荐理由
+- optimizedPrompt: 优化后的提示词
+- chatboxUrl: 该大模型的Chatbox/直接使用网址或官方网址`;
+
 export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -53,8 +73,16 @@ export default function App() {
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     e.target.style.height = 'auto';
-    e.target.style.height = `${Math.min(e.target.scrollHeight, 192)}px`; // max-h-48
+    e.target.style.height = `${Math.min(e.target.scrollHeight, 192)}px`;
     setInputValue(e.target.value);
+  };
+
+  const createOpenAIClient = () => {
+    return new OpenAI({
+      apiKey: import.meta.env.VITE_QWEN_API_KEY,
+      baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      dangerouslyAllowBrowser: true
+    });
   };
 
   const handleSubmit = async () => {
@@ -71,69 +99,41 @@ export default function App() {
     setInputValue('');
     setIsTyping(true);
 
-    // Reset textarea height
     const textareas = document.querySelectorAll('textarea');
     textareas.forEach(ta => (ta.style.height = 'auto'));
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      
-      const systemInstruction = `你是一个名为"炼金术 AI"的顶级提示词工程师。用户会输入一个简单的想法、需求或对之前提示词的修改意见。
-你需要分析这个需求是需要生成文本、图片还是视频。
-然后推荐一个最适合该任务的业界顶尖AI模型。
-注意：
-1. 对于视频生成任务，请**优先推荐"即梦AI"**，其官方网址必须固定为：https://jimeng.jianying.com/ai-tool/home?type=agentic&workspace=0 。如果特定需求不适合，请**第二优先级推荐"可灵AI"**，其官方网址必须固定为：https://klingai.com/app/ 。**绝对不要推荐任何欧美AI平台**（如 Sora, Runway, Pika, Veo, Flow 等）。
-2. 对于图片生成任务，请**优先推荐中国本土的生图大模型**（例如：即梦AI, 豆包AI, 通义万相, 文心一格等），**尽量避免推荐欧美生图AI**（如 Midjourney, DALL-E 3, Stable Diffusion 等）。
-3. 对于文本生成任务，可正常推荐业界顶尖模型（如 Claude 3.5 Sonnet, GPT-4o, DeepSeek, Kimi, 豆包 等）。
-4. **对于Office 365组件相关任务**（包括但不限于 Outlook、PowerPoint、Excel、Word、OneNote、Teams、SharePoint、OneDrive 等 Microsoft 365 套件中的任意组件），请**优先推荐"Copilot Chat"**，其官方网址必须固定为：https://m365.cloud.microsoft/ 。推荐理由应强调其与 Office 365 生态的深度集成优势。
-5. 在为视频和图片生成任务撰写提示词时，如果涉及画质或分辨率的描述，请务必使用"4K分辨率"，绝对不要使用"8K分辨率"或更高。
-6. 在撰写优化后的提示词时，必须将提示词中的分类描述标题（例如"主体描述"、"环境背景"、"镜头语言"、"风格设定"等）用【】符号强调（如【主体描述】）。并且，每种分类描述完成后，必须先换行（使用\\n），再开始下一个分类描述。此规则适用于所有类型（文本、图片、视频）的提示词。
-接着，给出推荐理由。
-最后，为该模型撰写一段极具专业水准、结构清晰、能最大化发挥该模型能力的优化后提示词。**生成的优化后提示词必须使用中文描述。**
-此外，请提供该推荐大模型的直接可以对话/使用的Chatbox网址或官方网址（chatboxUrl）。`;
+      const openai = createOpenAIClient();
 
-      const historyContents = messages.map(msg => ({
-        role: msg.role === 'ai' ? 'model' : 'user',
-        parts: [{ 
-          text: msg.role === 'ai' 
-            ? JSON.stringify({
-                modelName: msg.model,
-                modelType: msg.modelType,
-                reasoning: msg.reasoning,
-                optimizedPrompt: msg.prompt,
-                chatboxUrl: msg.chatboxUrl
-              }) 
-            : msg.content 
-        }]
+      const historyMessages: OpenAI.Chat.ChatCompletionMessageParam[] = messages.map(msg => ({
+        role: msg.role === 'ai' ? 'assistant' as const : 'user' as const,
+        content: msg.role === 'ai'
+          ? JSON.stringify({
+              modelName: msg.model,
+              modelType: msg.modelType,
+              reasoning: msg.reasoning,
+              optimizedPrompt: msg.prompt,
+              chatboxUrl: msg.chatboxUrl
+            })
+          : msg.content
       }));
 
-      historyContents.push({
-        role: 'user',
-        parts: [{ text: `用户需求/追问：${userText}` }]
+      historyMessages.push({
+        role: 'user' as const,
+        content: userText
       });
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: historyContents,
-        config: {
-          systemInstruction,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              modelName: { type: Type.STRING, description: "推荐的模型名称" },
-              modelType: { type: Type.STRING, description: "模型类型，如 'TEXT', 'IMAGE', 'VIDEO'" },
-              reasoning: { type: Type.STRING, description: "推荐理由" },
-              optimizedPrompt: { type: Type.STRING, description: "优化后的提示词" },
-              chatboxUrl: { type: Type.STRING, description: "该大模型的Chatbox/直接使用网址或官方网址" }
-            },
-            required: ["modelName", "modelType", "reasoning", "optimizedPrompt", "chatboxUrl"]
-          }
-        }
+      const response = await openai.chat.completions.create({
+        model: 'qwen-plus',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...historyMessages
+        ],
+        response_format: { type: 'json_object' }
       });
 
-      if (response.text) {
-        const result = JSON.parse(response.text);
+      if (response.choices[0]?.message?.content) {
+        const result = JSON.parse(response.choices[0].message.content);
         const aiMsg: Message = {
           id: (Date.now() + 1).toString(),
           role: 'ai',
@@ -148,11 +148,14 @@ export default function App() {
       }
     } catch (error: any) {
       console.error("AI Generation Error:", error);
-      let errorMessage = '抱歉，炼金术士的熔炉暂时熄火了，请稍后再试。';
-      
-      const errorString = error?.message || String(error);
-      if (error?.status === 429 || errorString.includes('429') || errorString.includes('RESOURCE_EXHAUSTED') || errorString.includes('quota')) {
-        errorMessage = '您的 API 调用额度已耗尽 (429 RESOURCE_EXHAUSTED)。请检查您的计费详情或稍后再试。';
+      let errorMessage = `抱歉，炼金术士的熔炉暂时熄火了。错误: ${error?.message || String(error)}`;
+
+      if (error?.status === 429) {
+        errorMessage = 'API 调用额度已耗尽，请稍后再试。';
+      } else if (error?.status === 401) {
+        errorMessage = 'API Key 无效，请检查配置。';
+      } else if (error?.status === 403) {
+        errorMessage = 'API Key 权限不足，请检查配置。';
       }
 
       const errorMsg: Message = {
@@ -180,58 +183,51 @@ export default function App() {
     setIsTyping(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      
-      const systemInstruction = `你是一个名为"炼金术 AI"的顶级提示词工程师。用户要求你总结之前所有的提示词版本。
+      const openai = createOpenAIClient();
+
+      const summarizePrompt = `你是一个名为"炼金术 AI"的顶级提示词工程师。用户要求你总结之前所有的提示词版本。
 请回顾之前的对话历史，识别几次答案中的重复项，将它们精炼并整合为一个最终的、最完美的提示词版本。
 注意：
 1. 在为视频和图片生成任务撰写最终提示词时，如果涉及画质或分辨率的描述，请务必使用"4K分辨率"，绝对不要使用"8K分辨率"或更高。
-2. 如果最终推荐的是视频模型"即梦AI"，其网址必须固定为：https://jimeng.jianying.com/ai-tool/home?type=agentic&workspace=0 ；如果是"可灵AI"，网址必须固定为：https://klingai.com/app/ ；如果是"Copilot Chat"，网址必须固定为：https://m365.cloud.microsoft/ 。
+2. 如果最终推荐的是视频模型"即梦AI"，其网址必须固定为：https://jimeng.jianying.com/ai-tool/home?type=agentic&workspace=0 ；如果是"可灵AI"，网址必须固定为：https://klingai.com/app/ 。
 3. 在撰写最终的提示词时，必须将提示词中的分类描述标题（例如"主体描述"、"环境背景"、"镜头语言"、"风格设定"等）用【】符号强调（如【主体描述】）。并且，每种分类描述完成后，必须先换行（使用\\n），再开始下一个分类描述。此规则适用于所有类型（文本、图片、视频）的提示词。
-保持与之前相同的JSON输出格式。推荐模型可以保持为最近一次推荐的模型。`;
 
-      const historyContents = messages.map(msg => ({
-        role: msg.role === 'ai' ? 'model' : 'user',
-        parts: [{ 
-          text: msg.role === 'ai' 
-            ? JSON.stringify({
-                modelName: msg.model,
-                modelType: msg.modelType,
-                reasoning: msg.reasoning,
-                optimizedPrompt: msg.prompt,
-                chatboxUrl: msg.chatboxUrl
-              }) 
-            : msg.content 
-        }]
+请以JSON格式输出：
+- modelName: 推荐的模型名称
+- modelType: 模型类型，如 'TEXT', 'IMAGE', 'VIDEO'
+- reasoning: 总结与精炼的理由
+- optimizedPrompt: 最终整合精炼后的提示词
+- chatboxUrl: 该大模型的Chatbox/直接使用网址或官方网址`;
+
+      const historyMessages: OpenAI.Chat.ChatCompletionMessageParam[] = messages.map(msg => ({
+        role: msg.role === 'ai' ? 'assistant' as const : 'user' as const,
+        content: msg.role === 'ai'
+          ? JSON.stringify({
+              modelName: msg.model,
+              modelType: msg.modelType,
+              reasoning: msg.reasoning,
+              optimizedPrompt: msg.prompt,
+              chatboxUrl: msg.chatboxUrl
+            })
+          : msg.content
       }));
 
-      historyContents.push({
-        role: 'user',
-        parts: [{ text: `用户需求/追问：${summaryRequestText}` }]
+      historyMessages.push({
+        role: 'user' as const,
+        content: summaryRequestText
       });
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: historyContents,
-        config: {
-          systemInstruction,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              modelName: { type: Type.STRING, description: "推荐的模型名称" },
-              modelType: { type: Type.STRING, description: "模型类型，如 'TEXT', 'IMAGE', 'VIDEO'" },
-              reasoning: { type: Type.STRING, description: "总结与精炼的理由" },
-              optimizedPrompt: { type: Type.STRING, description: "最终整合精炼后的提示词" },
-              chatboxUrl: { type: Type.STRING, description: "该大模型的Chatbox/直接使用网址或官方网址" }
-            },
-            required: ["modelName", "modelType", "reasoning", "optimizedPrompt", "chatboxUrl"]
-          }
-        }
+      const response = await openai.chat.completions.create({
+        model: 'qwen-plus',
+        messages: [
+          { role: 'system', content: summarizePrompt },
+          ...historyMessages
+        ],
+        response_format: { type: 'json_object' }
       });
 
-      if (response.text) {
-        const result = JSON.parse(response.text);
+      if (response.choices[0]?.message?.content) {
+        const result = JSON.parse(response.choices[0].message.content);
         const aiMsg: Message = {
           id: (Date.now() + 1).toString(),
           role: 'ai',
@@ -246,11 +242,10 @@ export default function App() {
       }
     } catch (error: any) {
       console.error("AI Generation Error:", error);
-      let errorMessage = '抱歉，炼金术士的熔炉暂时熄火了，请稍后再试。';
-      
-      const errorString = error?.message || String(error);
-      if (error?.status === 429 || errorString.includes('429') || errorString.includes('RESOURCE_EXHAUSTED') || errorString.includes('quota')) {
-        errorMessage = '您的 API 调用额度已耗尽 (429 RESOURCE_EXHAUSTED)。请检查您的计费详情或稍后再试。';
+      let errorMessage = `抱歉，炼金术士的熔炉暂时熄火了。错误: ${error?.message || String(error)}`;
+
+      if (error?.status === 429) {
+        errorMessage = 'API 调用额度已耗尽，请稍后再试。';
       }
 
       const errorMsg: Message = {
@@ -275,7 +270,7 @@ export default function App() {
     return (
       <div className="bg-surface text-on-surface font-body selection:bg-primary/30 flex flex-col items-center min-h-screen">
         <main className="flex flex-col justify-center px-6 w-full max-w-7xl mx-auto h-[calc(100vh-2.5rem)] items-center">
-          <motion.section 
+          <motion.section
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, ease: "easeOut" }}
@@ -382,9 +377,9 @@ export default function App() {
 
                             {msg.chatboxUrl && (
                               <div className="flex flex-wrap gap-3">
-                                <a 
-                                  href={msg.chatboxUrl} 
-                                  target="_blank" 
+                                <a
+                                  href={msg.chatboxUrl}
+                                  target="_blank"
                                   rel="noopener noreferrer"
                                   className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 border border-primary/20 rounded-lg text-xs text-primary transition-colors"
                                 >
@@ -416,7 +411,7 @@ export default function App() {
                 )}
               </motion.div>
             ))}
-            
+
             {isTyping && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
@@ -471,7 +466,7 @@ export default function App() {
               />
             </div>
             <div className="flex items-center justify-end px-2 md:px-0 pb-2 md:pb-0">
-              <button 
+              <button
                 onClick={handleSubmit}
                 disabled={!inputValue.trim()}
                 className="flex items-center gap-2 py-2.5 bg-primary text-on-primary rounded-full font-label tracking-widest uppercase text-sm font-bold active:scale-95 transition-all shadow-lg shadow-primary/20 flex items-center justify-center min-w-[3.5rem] disabled:opacity-50 disabled:cursor-not-allowed"
@@ -499,7 +494,7 @@ function CopyButton({ text }: { text: string }) {
   };
 
   return (
-    <button 
+    <button
       onClick={handleCopy}
       className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-primary hover:opacity-80 transition-opacity"
     >
@@ -508,4 +503,3 @@ function CopyButton({ text }: { text: string }) {
     </button>
   );
 }
-

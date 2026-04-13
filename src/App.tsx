@@ -290,7 +290,7 @@ export default function App() {
             </div>
           </motion.section>
 
-          <motion.div
+          <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5, delay: 0.2 }}
@@ -307,15 +307,13 @@ export default function App() {
                   rows={1}
                 />
                 <div className="flex items-center justify-end px-4 pb-3">
-                  <button
+                  <button 
                     onClick={handleSubmit}
                     disabled={!inputValue.trim()}
-                    className="flex items-center justify-center gap-2 px-6 py-2.5 bg-primary text-on-primary rounded-full font-label tracking-widest uppercase text-sm font-bold active:scale-95 transition-all shadow-lg shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center gap-2 px-6 py-2.5 bg-primary text-on-primary rounded-full font-label tracking-widest uppercase text-sm font-bold active:scale-95 transition-all shadow-lg shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <span className="flex items-center gap-2">
-                      炼制
-                      <Sparkles className="w-4 h-4 fill-current" />
-                    </span>
+                    炼制
+                    <Sparkles className="w-4 h-4 fill-current" />
                   </button>
                 </div>
               </div>
@@ -438,17 +436,17 @@ export default function App() {
       <div className="fixed bottom-0 left-0 w-full p-4 md:p-8 bg-gradient-to-t from-background via-background/95 to-transparent z-40">
         <div className="max-w-4xl mx-auto flex flex-col gap-3">
           <div className="flex justify-center gap-4">
-            <button
+            <button 
               onClick={() => setMessages([])}
-              className="flex items-center justify-center gap-2 px-8 py-2.5 min-w-[160px] bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded-full text-xs font-bold uppercase tracking-widest text-white transition-colors shadow-lg"
+              className="flex items-center justify-center gap-2 px-8 py-2.5 min-w-[160px] bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/20 rounded-full text-xs font-bold uppercase tracking-widest text-on-surface-variant hover:text-primary transition-colors shadow-sm"
             >
               <Sparkles className="w-3.5 h-3.5" />
               <span>开启新对话</span>
             </button>
-            <button
+            <button 
               onClick={handleSummarize}
               disabled={isTyping || messages.length === 0}
-              className="flex items-center justify-center gap-2 px-8 py-2.5 min-w-[160px] bg-primary hover:bg-primary/90 border border-primary rounded-full text-xs font-bold uppercase tracking-widest text-on-primary transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center justify-center gap-2 px-8 py-2.5 min-w-[160px] bg-primary/10 hover:bg-primary/20 border border-primary/30 rounded-full text-xs font-bold uppercase tracking-widest text-primary transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Layers className="w-3.5 h-3.5" />
               <span>总结提示词</span>

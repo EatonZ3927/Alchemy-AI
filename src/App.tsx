@@ -61,7 +61,9 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -85,22 +87,95 @@ export default function App() {
     });
   };
 
+  const fileToBase64 = async (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const result = reader.result as string;
+        const base64 = result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+    });
+  };
+
+  const analyzeImage = async (imageBase64: string): Promise<string> => {
+    const openai = createOpenAIClient();
+
+    const visionPrompt = `请详细分析这张图片，识别并描述以下内容：
+1. 图片中的主要元素和整体构图
+2. 图片中的物体、物品及其特征
+3. 图片中的人物（如果有）：外貌特征、动作、表情、服饰等
+4. 图片中的文字内容（如果有）：完整提取所有可见文字
+5. 图片的色彩、光影、氛围等视觉特征
+6. 图片的风格类型（如写实、插画、摄影、动漫等）
+
+请用中文详细描述，格式清晰，每个部分用【】标记标题。`;
+
+    const response = await openai.chat.completions.create({
+      model: 'qwen-vl-max',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: visionPrompt },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:image/jpeg;base64,${imageBase64}`
+              }
+            }
+          ]
+        }
+      ]
+    });
+
+    return response.choices[0]?.message?.content || '';
+  };
+
   const handleSubmit = async () => {
-    if (!inputValue.trim()) return;
+    if (!inputValue.trim() && !attachedFile) return;
 
     const userText = inputValue.trim();
+    let enhancedUserText = userText;
+
+    setIsTyping(true);
+
+    let imageAnalysis = '';
+    let hasImage = false;
+
+    if (attachedFile && attachedFile.type.startsWith('image/')) {
+      hasImage = true;
+      try {
+        const base64 = await fileToBase64(attachedFile);
+        imageAnalysis = await analyzeImage(base64);
+      } catch (error) {
+        console.error('Image analysis error:', error);
+      }
+    }
+
+    let displayContent = userText;
+    if (hasImage && attachedFile) {
+      displayContent = `${userText}\n[已上传图片: ${attachedFile.name}]`;
+    }
+
     const newUserMsg: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: userText,
+      content: displayContent,
     };
 
     setMessages(prev => [...prev, newUserMsg]);
     setInputValue('');
-    setIsTyping(true);
+    setAttachedFile(null);
 
     const textareas = document.querySelectorAll('textarea');
     textareas.forEach(ta => (ta.style.height = 'auto'));
+
+    if (imageAnalysis) {
+      enhancedUserText = `${userText}\n\n【图片分析结果】\n${imageAnalysis}\n\n请根据以上图片分析内容，结合用户需求生成优化后的提示词。`;
+    }
 
     try {
       const openai = createOpenAIClient();
@@ -120,7 +195,7 @@ export default function App() {
 
       historyMessages.push({
         role: 'user' as const,
-        content: userText
+        content: enhancedUserText
       });
 
       const response = await openai.chat.completions.create({
@@ -140,7 +215,7 @@ export default function App() {
           content: '',
           model: result.modelName,
           modelType: result.modelType,
-          reasoning: result.reasoning,
+          reasoning: imageAnalysis ? `${result.reasoning}\n\n【已融合图片分析内容】` : result.reasoning,
           prompt: result.optimizedPrompt,
           chatboxUrl: result.chatboxUrl,
         };
@@ -266,6 +341,24 @@ export default function App() {
     }
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setAttachedFile(file);
+    }
+  };
+
+  const handleAttachClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleRemoveFile = () => {
+    setAttachedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   if (messages.length === 0) {
     return (
       <div className="bg-surface text-on-surface font-body selection:bg-primary/30 flex flex-col items-center min-h-screen">
@@ -290,7 +383,7 @@ export default function App() {
             </div>
           </motion.section>
 
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5, delay: 0.2 }}
@@ -306,10 +399,38 @@ export default function App() {
                   placeholder="输入你的灵感，开始炼制..."
                   rows={1}
                 />
-                <div className="flex items-center justify-end px-4 pb-3">
-                  <button 
+                {attachedFile && (
+                  <div className="flex items-center gap-2 px-4 pb-2">
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-lg text-xs text-primary">
+                      <Paperclip className="w-3 h-3" />
+                      <span className="truncate max-w-[200px]">{attachedFile.name}</span>
+                      <button
+                        onClick={handleRemoveFile}
+                        className="ml-1 hover:opacity-70 transition-opacity"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <div className="flex items-center justify-between px-4 pb-3">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    accept="image/*,.pdf,.txt,.doc,.docx"
+                  />
+                  <button
+                    onClick={handleAttachClick}
+                    className="flex items-center justify-center w-10 h-10 bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/20 rounded-full text-on-surface-variant hover:text-primary transition-colors"
+                    title="上传附件"
+                  >
+                    <Paperclip className="w-5 h-5" />
+                  </button>
+                  <button
                     onClick={handleSubmit}
-                    disabled={!inputValue.trim()}
+                    disabled={!inputValue.trim() && !attachedFile}
                     className="flex items-center gap-2 px-6 py-2.5 bg-primary text-on-primary rounded-full font-label tracking-widest uppercase text-sm font-bold active:scale-95 transition-all shadow-lg shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     炼制
@@ -436,14 +557,14 @@ export default function App() {
       <div className="fixed bottom-0 left-0 w-full p-4 md:p-8 bg-gradient-to-t from-background via-background/95 to-transparent z-40">
         <div className="max-w-4xl mx-auto flex flex-col gap-3">
           <div className="flex justify-center gap-4">
-            <button 
+            <button
               onClick={() => setMessages([])}
               className="flex items-center justify-center gap-2 px-8 py-2.5 min-w-[160px] bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/20 rounded-full text-xs font-bold uppercase tracking-widest text-on-surface-variant hover:text-primary transition-colors shadow-sm"
             >
               <Sparkles className="w-3.5 h-3.5" />
               <span>开启新对话</span>
             </button>
-            <button 
+            <button
               onClick={handleSummarize}
               disabled={isTyping || messages.length === 0}
               className="flex items-center justify-center gap-2 px-8 py-2.5 min-w-[160px] bg-primary/10 hover:bg-primary/20 border border-primary/30 rounded-full text-xs font-bold uppercase tracking-widest text-primary transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
@@ -466,7 +587,7 @@ export default function App() {
             <div className="flex items-center justify-end px-2 md:px-0 pb-2 md:pb-0">
               <button
                 onClick={handleSubmit}
-                disabled={!inputValue.trim()}
+                disabled={!inputValue.trim() && !attachedFile}
                 className="flex items-center gap-2 py-2.5 bg-primary text-on-primary rounded-full font-label tracking-widest uppercase text-sm font-bold active:scale-95 transition-all shadow-lg shadow-primary/20 flex items-center justify-center min-w-[3.5rem] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Sparkles className="w-5 h-5 fill-current" />

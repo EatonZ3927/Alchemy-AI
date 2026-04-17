@@ -138,26 +138,12 @@ export default function App() {
     if (!inputValue.trim() && !attachedFile) return;
 
     const userText = inputValue.trim();
-    let enhancedUserText = userText;
-
-    setIsTyping(true);
-
-    let imageAnalysis = '';
-    let hasImage = false;
-
-    if (attachedFile && attachedFile.type.startsWith('image/')) {
-      hasImage = true;
-      try {
-        const base64 = await fileToBase64(attachedFile);
-        imageAnalysis = await analyzeImage(base64);
-      } catch (error) {
-        console.error('Image analysis error:', error);
-      }
-    }
+    const currentFile = attachedFile;
+    const hasImage = currentFile && currentFile.type.startsWith('image/');
 
     let displayContent = userText;
-    if (hasImage && attachedFile) {
-      displayContent = `${userText}\n[已上传图片: ${attachedFile.name}]`;
+    if (hasImage && currentFile) {
+      displayContent = userText ? `${userText}\n[已上传图片: ${currentFile.name}]` : `[已上传图片: ${currentFile.name}]`;
     }
 
     const newUserMsg: Message = {
@@ -169,12 +155,27 @@ export default function App() {
     setMessages(prev => [...prev, newUserMsg]);
     setInputValue('');
     setAttachedFile(null);
+    setIsTyping(true);
 
     const textareas = document.querySelectorAll('textarea');
     textareas.forEach(ta => (ta.style.height = 'auto'));
 
+    let enhancedUserText = userText;
+    let imageAnalysis = '';
+
+    if (hasImage && currentFile) {
+      try {
+        const base64 = await fileToBase64(currentFile);
+        imageAnalysis = await analyzeImage(base64);
+      } catch (error) {
+        console.error('Image analysis error:', error);
+      }
+    }
+
     if (imageAnalysis) {
-      enhancedUserText = `${userText}\n\n【图片分析结果】\n${imageAnalysis}\n\n请根据以上图片分析内容，结合用户需求生成优化后的提示词。`;
+      enhancedUserText = userText 
+        ? `${userText}\n\n【图片分析结果】\n${imageAnalysis}\n\n请根据以上图片分析内容，结合用户需求生成优化后的提示词。`
+        : `请根据图片分析结果生成一个专业的提示词。\n\n【图片分析结果】\n${imageAnalysis}`;
     }
 
     try {

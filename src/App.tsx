@@ -61,7 +61,7 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -100,10 +100,10 @@ export default function App() {
     });
   };
 
-  const analyzeImage = async (imageBase64: string): Promise<string> => {
+  const analyzeImage = async (imageBase64: string, index?: number): Promise<string> => {
     const openai = createOpenAIClient();
 
-    const visionPrompt = `请详细分析这张图片，识别并描述以下内容：
+    const visionPrompt = `请详细分析这张图片${index ? `（第${index}张）` : ''}，识别并描述以下内容：
 1. 图片中的主要元素和整体构图
 2. 图片中的物体、物品及其特征
 3. 图片中的人物（如果有）：外貌特征、动作、表情、服饰等
@@ -134,16 +134,30 @@ export default function App() {
     return response.choices[0]?.message?.content || '';
   };
 
+  const analyzeMultipleImages = async (files: File[]): Promise<string[]> => {
+    const results: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const base64 = await fileToBase64(files[i]);
+      const analysis = await analyzeImage(base64, i + 1);
+      results.push(`【图片${i + 1}分析】\n${analysis}`);
+    }
+    return results;
+  };
+
   const handleSubmit = async () => {
-    if (!inputValue.trim() && !attachedFile) return;
+    if (!inputValue.trim() && attachedFiles.length === 0) return;
 
     const userText = inputValue.trim();
-    const currentFile = attachedFile;
-    const hasImage = currentFile && currentFile.type.startsWith('image/');
+    const currentFiles = [...attachedFiles];
+    const imageFiles = currentFiles.filter(f => f.type.startsWith('image/'));
+    const hasImages = imageFiles.length > 0;
 
     let displayContent = userText;
-    if (hasImage && currentFile) {
-      displayContent = userText ? `${userText}\n[已上传图片: ${currentFile.name}]` : `[已上传图片: ${currentFile.name}]`;
+    if (hasImages) {
+      const fileNames = imageFiles.map(f => f.name).join(', ');
+      displayContent = userText 
+        ? `${userText}\n[已上传图片: ${fileNames}]` 
+        : `[已上传图片: ${fileNames}]`;
     }
 
     const newUserMsg: Message = {
@@ -154,28 +168,28 @@ export default function App() {
 
     setMessages(prev => [...prev, newUserMsg]);
     setInputValue('');
-    setAttachedFile(null);
+    setAttachedFiles([]);
     setIsTyping(true);
 
     const textareas = document.querySelectorAll('textarea');
     textareas.forEach(ta => (ta.style.height = 'auto'));
 
     let enhancedUserText = userText;
-    let imageAnalysis = '';
+    let imageAnalysisResults: string[] = [];
 
-    if (hasImage && currentFile) {
+    if (hasImages) {
       try {
-        const base64 = await fileToBase64(currentFile);
-        imageAnalysis = await analyzeImage(base64);
+        imageAnalysisResults = await analyzeMultipleImages(imageFiles);
       } catch (error) {
         console.error('Image analysis error:', error);
       }
     }
 
-    if (imageAnalysis) {
-      enhancedUserText = userText 
-        ? `${userText}\n\n【图片分析结果】\n${imageAnalysis}\n\n请根据以上图片分析内容，结合用户需求生成优化后的提示词。`
-        : `请根据图片分析结果生成一个专业的提示词。\n\n【图片分析结果】\n${imageAnalysis}`;
+    if (imageAnalysisResults.length > 0) {
+      const combinedAnalysis = imageAnalysisResults.join('\n\n');
+      enhancedUserText = userText
+        ? `${userText}\n\n${combinedAnalysis}\n\n请根据以上所有图片分析内容，综合生成优化后的提示词。`
+        : `请根据以下图片分析结果生成一个专业的提示词。\n\n${combinedAnalysis}`;
     }
 
     try {
@@ -216,7 +230,7 @@ export default function App() {
           content: '',
           model: result.modelName,
           modelType: result.modelType,
-          reasoning: imageAnalysis ? `${result.reasoning}\n\n【已融合图片分析内容】` : result.reasoning,
+          reasoning: imageAnalysisResults.length > 0 ? `${result.reasoning}\n\n【已融合${imageAnalysisResults.length}张图片分析内容】` : result.reasoning,
           prompt: result.optimizedPrompt,
           chatboxUrl: result.chatboxUrl,
         };
@@ -343,9 +357,14 @@ export default function App() {
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setAttachedFile(file);
+    const files = e.target.files;
+    if (files) {
+      const newFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+      const totalFiles = [...attachedFiles, ...newFiles].slice(0, 3);
+      setAttachedFiles(totalFiles);
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -353,11 +372,8 @@ export default function App() {
     fileInputRef.current?.click();
   };
 
-  const handleRemoveFile = () => {
-    setAttachedFile(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+  const handleRemoveFile = (index: number) => {
+    setAttachedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   if (messages.length === 0) {
@@ -400,38 +416,50 @@ export default function App() {
                   placeholder="输入你的灵感，开始炼制..."
                   rows={1}
                 />
-                {attachedFile && (
-                  <div className="flex items-center gap-2 px-4 pb-2">
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-lg text-xs text-primary">
-                      <Paperclip className="w-3 h-3" />
-                      <span className="truncate max-w-[200px]">{attachedFile.name}</span>
-                      <button
-                        onClick={handleRemoveFile}
-                        className="ml-1 hover:opacity-70 transition-opacity"
-                      >
-                        ×
-                      </button>
-                    </div>
+                {attachedFiles.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 px-4 pb-2">
+                    {attachedFiles.map((file, index) => (
+                      <div key={index} className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-lg text-xs text-primary">
+                        <Paperclip className="w-3 h-3" />
+                        <span className="truncate max-w-[150px]">{file.name}</span>
+                        <button
+                          onClick={() => handleRemoveFile(index)}
+                          className="ml-1 hover:opacity-70 transition-opacity"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    {attachedFiles.length < 3 && (
+                      <span className="text-xs text-on-surface-variant">还可上传 {3 - attachedFiles.length} 张</span>
+                    )}
                   </div>
                 )}
                 <div className="flex items-center justify-between px-4 pb-3">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                    accept="image/*,.pdf,.txt,.doc,.docx"
-                  />
-                  <button
-                    onClick={handleAttachClick}
-                    className="flex items-center justify-center w-10 h-10 bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/20 rounded-full text-on-surface-variant hover:text-primary transition-colors"
-                    title="上传附件"
-                  >
-                    <Paperclip className="w-5 h-5" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                      accept="image/*"
+                      multiple
+                    />
+                    <button
+                      onClick={handleAttachClick}
+                      disabled={attachedFiles.length >= 3}
+                      className="flex items-center justify-center w-10 h-10 bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/20 rounded-full text-on-surface-variant hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      title={attachedFiles.length >= 3 ? "已达最大图片数量" : "上传图片（最多3张）"}
+                    >
+                      <Paperclip className="w-5 h-5" />
+                    </button>
+                    {attachedFiles.length > 0 && (
+                      <span className="text-xs text-on-surface-variant">{attachedFiles.length}/3</span>
+                    )}
+                  </div>
                   <button
                     onClick={handleSubmit}
-                    disabled={!inputValue.trim() && !attachedFile}
+                    disabled={!inputValue.trim() && attachedFiles.length === 0}
                     className="flex items-center gap-2 px-6 py-2.5 bg-primary text-on-primary rounded-full font-label tracking-widest uppercase text-sm font-bold active:scale-95 transition-all shadow-lg shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     炼制
@@ -588,7 +616,7 @@ export default function App() {
             <div className="flex items-center justify-end px-2 md:px-0 pb-2 md:pb-0">
               <button
                 onClick={handleSubmit}
-                disabled={!inputValue.trim() && !attachedFile}
+                disabled={!inputValue.trim() && attachedFiles.length === 0}
                 className="flex items-center gap-2 py-2.5 bg-primary text-on-primary rounded-full font-label tracking-widest uppercase text-sm font-bold active:scale-95 transition-all shadow-lg shadow-primary/20 flex items-center justify-center min-w-[3.5rem] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Sparkles className="w-5 h-5 fill-current" />

@@ -5,9 +5,16 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Paperclip, Sparkles, Globe, Languages, Copy, Mic, Layers, Check, ArrowLeft, ExternalLink, Download } from 'lucide-react';
+import { Paperclip, Sparkles, Globe, Languages, Copy, Mic, Layers, Check, ArrowLeft, ExternalLink, Download, Film, Image as ImageIcon } from 'lucide-react';
 import OpenAI from 'openai';
 import html2canvas from 'html2canvas';
+
+// 支持的图片格式
+const IMAGE_FORMATS = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'];
+// 支持的视频格式
+const VIDEO_FORMATS = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-ms-wmv', 'video/x-flv', 'video/x-matroska', 'video/webm', 'video/mov', 'video/avi', 'video/mkv'];
+// 最大视频时长（秒）
+const MAX_VIDEO_DURATION = 30;
 
 type Message = {
   id: string;
@@ -158,13 +165,163 @@ export default function App() {
     return results;
   };
 
+  // 获取视频时长
+  const getVideoDuration = (file: File): Promise<number> => {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.onloadedmetadata = () => {
+        URL.revokeObjectURL(video.src);
+        resolve(video.duration);
+      };
+      video.onerror = () => {
+        URL.revokeObjectURL(video.src);
+        reject(new Error('无法读取视频信息'));
+      };
+      video.src = URL.createObjectURL(file);
+    });
+  };
+
+  // 从视频中提取帧
+  const extractVideoFrames = async (file: File, numFrames: number = 5): Promise<string[]> => {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.muted = true;
+      
+      video.onloadedmetadata = async () => {
+        const duration = video.duration;
+        const frames: string[] = [];
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        if (!ctx) {
+          reject(new Error('无法创建Canvas上下文'));
+          return;
+        }
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        // 根据视频时长决定提取帧数，最多提取 numFrames 帧
+        const actualFrames = Math.min(numFrames, Math.ceil(duration / 5));
+        const interval = duration / (actualFrames + 1);
+
+        for (let i = 1; i <= actualFrames; i++) {
+          const time = i * interval;
+          await new Promise<void>((res) => {
+            video.currentTime = time;
+            video.onseeked = () => {
+              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+              const frameData = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+              frames.push(frameData);
+              res();
+            };
+          });
+        }
+
+        URL.revokeObjectURL(video.src);
+        resolve(frames);
+      };
+
+      video.onerror = () => {
+        URL.revokeObjectURL(video.src);
+        reject(new Error('无法加载视频'));
+      };
+
+      video.src = URL.createObjectURL(file);
+    });
+  };
+
+  // 分析单个视频帧
+  const analyzeVideoFrame = async (frameBase64: string, frameIndex: number, totalFrames: number): Promise<string> => {
+    const openai = createOpenAIClient();
+
+    const visionPrompt = `请分析这个视频帧（第${frameIndex}/${totalFrames}帧），识别并描述以下内容：
+1. 画面中的主要元素和整体构图
+2. 画面中的物体、物品及其特征
+3. 画面中的人物（如果有）：外貌特征、动作、表情、服饰等
+4. 画面中的文字内容（如果有）：完整提取所有可见文字
+5. 画面的色彩、光影、氛围等视觉特征
+6. 画面的风格类型（如写实、插画、摄影、动漫等）
+
+请用中文简洁描述，重点突出关键元素。`;
+
+    const response = await openai.chat.completions.create({
+      model: 'qwen-vl-max',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: visionPrompt },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:image/jpeg;base64,${frameBase64}`
+              }
+            }
+          ]
+        }
+      ]
+    });
+
+    return response.choices[0]?.message?.content || '';
+  };
+
+  // 分析视频内容
+  const analyzeVideo = async (file: File): Promise<string> => {
+    // 首先检查视频时长
+    const duration = await getVideoDuration(file);
+    if (duration > MAX_VIDEO_DURATION) {
+      throw new Error(`视频时长超过${MAX_VIDEO_DURATION}秒限制，当前时长: ${Math.round(duration)}秒`);
+    }
+
+    // 提取视频帧
+    const frames = await extractVideoFrames(file);
+    
+    // 分析每一帧
+    const frameAnalyses: string[] = [];
+    for (let i = 0; i < frames.length; i++) {
+      const analysis = await analyzeVideoFrame(frames[i], i + 1, frames.length);
+      frameAnalyses.push(`【第${i + 1}帧】${analysis}`);
+    }
+
+    // 综合分析所有帧，生成视频整体描述
+    const openai = createOpenAIClient();
+    const summaryResponse = await openai.chat.completions.create({
+      model: 'qwen-plus',
+      messages: [
+        {
+          role: 'system',
+          content: `你是一个专业的视频内容分析师。你需要根据视频各帧的分析结果，综合生成一个完整的视频内容描述。
+描述需要包含：
+1. 视频的主题和整体内容概述
+2. 场景和环境描述
+3. 主要角色/物体及其动作变化
+4. 视觉风格和氛围
+5. 关键的视觉元素和细节
+
+请用中文描述，格式清晰，每个部分用【】标记标题。`
+        },
+        {
+          role: 'user',
+          content: `以下是视频各帧的分析结果，请综合生成视频整体描述：\n\n${frameAnalyses.join('\n\n')}`
+        }
+      ]
+    });
+
+    return summaryResponse.choices[0]?.message?.content || frameAnalyses.join('\n\n');
+  };
+
   const handleSubmit = async () => {
     if (!inputValue.trim() && attachedFiles.length === 0) return;
 
     const userText = inputValue.trim();
     const currentFiles = [...attachedFiles];
-    const imageFiles = currentFiles.filter(f => f.type.startsWith('image/'));
+    const imageFiles = currentFiles.filter(f => IMAGE_FORMATS.includes(f.type));
+    const videoFiles = currentFiles.filter(f => VIDEO_FORMATS.includes(f.type) || f.type.startsWith('video/'));
     const hasImages = imageFiles.length > 0;
+    const hasVideos = videoFiles.length > 0;
 
     let displayContent = userText;
     if (hasImages) {
@@ -172,6 +329,12 @@ export default function App() {
       displayContent = userText 
         ? `${userText}\n[已上传图片: ${fileNames}]` 
         : `[已上传图片: ${fileNames}]`;
+    }
+    if (hasVideos) {
+      const fileNames = videoFiles.map(f => f.name).join(', ');
+      displayContent = displayContent
+        ? `${displayContent}\n[已上传视频: ${fileNames}]`
+        : `[已上传视频: ${fileNames}]`;
     }
 
     const newUserMsg: Message = {
@@ -189,21 +352,37 @@ export default function App() {
     textareas.forEach(ta => (ta.style.height = 'auto'));
 
     let enhancedUserText = userText;
-    let imageAnalysisResults: string[] = [];
+    let mediaAnalysisResults: string[] = [];
 
+    // 分析图片
     if (hasImages) {
       try {
-        imageAnalysisResults = await analyzeMultipleImages(imageFiles);
+        const imageResults = await analyzeMultipleImages(imageFiles);
+        mediaAnalysisResults.push(...imageResults);
       } catch (error) {
         console.error('Image analysis error:', error);
       }
     }
 
-    if (imageAnalysisResults.length > 0) {
-      const combinedAnalysis = imageAnalysisResults.join('\n\n');
+    // 分析视频
+    if (hasVideos) {
+      for (let i = 0; i < videoFiles.length; i++) {
+        try {
+          const videoAnalysis = await analyzeVideo(videoFiles[i]);
+          mediaAnalysisResults.push(`【视频${i + 1}分析】\n${videoAnalysis}`);
+        } catch (error: any) {
+          console.error('Video analysis error:', error);
+          mediaAnalysisResults.push(`【视频${i + 1}分析失败】\n${error?.message || '无法分析视频内容'}`);
+        }
+      }
+    }
+
+    if (mediaAnalysisResults.length > 0) {
+      const combinedAnalysis = mediaAnalysisResults.join('\n\n');
+      const mediaType = hasVideos ? '视频' : '图片';
       enhancedUserText = userText
-        ? `${userText}\n\n${combinedAnalysis}\n\n请根据以上所有图片分析内容，综合生成优化后的提示词。`
-        : `请根据以下图片分析结果生成一个专业的提示词。\n\n${combinedAnalysis}`;
+        ? `${userText}\n\n${combinedAnalysis}\n\n请根据以上所有${mediaType}分析内容，综合生成优化后的提示词。`
+        : `请根据以下${mediaType}分析结果生成一个专业的提示词。\n\n${combinedAnalysis}`;
     }
 
     try {
@@ -244,7 +423,7 @@ export default function App() {
           content: '',
           model: result.modelName,
           modelType: result.modelType,
-          reasoning: imageAnalysisResults.length > 0 ? `${result.reasoning}\n\n【已融合${imageAnalysisResults.length}张图片分析内容】` : result.reasoning,
+          reasoning: mediaAnalysisResults.length > 0 ? `${result.reasoning}\n\n【已融合${mediaAnalysisResults.length}个媒体文件分析内容】` : result.reasoning,
           prompt: result.optimizedPrompt,
           chatboxUrl: result.chatboxUrl,
         };
@@ -370,11 +549,41 @@ export default function App() {
     }
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files) {
-      const newFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
-      const totalFiles = [...attachedFiles, ...newFiles].slice(0, 3);
+      const allFiles: File[] = Array.from(files);
+      // 过滤支持的文件类型
+      const validFiles: File[] = allFiles.filter(f => 
+        IMAGE_FORMATS.includes(f.type) || 
+        VIDEO_FORMATS.includes(f.type) || 
+        f.type.startsWith('image/') || 
+        f.type.startsWith('video/')
+      );
+      
+      // 检查视频时长
+      const validFilesWithDuration: File[] = [];
+      for (const file of validFiles) {
+        if (VIDEO_FORMATS.includes(file.type) || file.type.startsWith('video/')) {
+          try {
+            const duration = await getVideoDuration(file);
+            if (duration <= MAX_VIDEO_DURATION) {
+              validFilesWithDuration.push(file);
+            } else {
+              // 提示用户视频时长超限
+              alert(`视频 "${file.name}" 时长超过${MAX_VIDEO_DURATION}秒限制（当前${Math.round(duration)}秒），已自动跳过`);
+            }
+          } catch {
+            // 无法读取时长，仍然允许上传
+            validFilesWithDuration.push(file);
+          }
+        } else {
+          validFilesWithDuration.push(file);
+        }
+      }
+      
+      // 限制最多3个文件
+      const totalFiles = [...attachedFiles, ...validFilesWithDuration].slice(0, 3);
       setAttachedFiles(totalFiles);
     }
     if (fileInputRef.current) {
@@ -432,20 +641,23 @@ export default function App() {
                 />
                 {attachedFiles.length > 0 && (
                   <div className="flex flex-wrap items-center gap-2 px-4 pb-2">
-                    {attachedFiles.map((file, index) => (
-                      <div key={index} className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-lg text-xs text-primary">
-                        <Paperclip className="w-3 h-3" />
-                        <span className="truncate max-w-[150px]">{file.name}</span>
-                        <button
-                          onClick={() => handleRemoveFile(index)}
-                          className="ml-1 hover:opacity-70 transition-opacity"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
+                    {attachedFiles.map((file, index) => {
+                      const isVideo = VIDEO_FORMATS.includes(file.type) || file.type.startsWith('video/');
+                      return (
+                        <div key={index} className={`flex items-center gap-2 px-3 py-1.5 border rounded-lg text-xs ${isVideo ? 'bg-tertiary/10 border-tertiary/20 text-tertiary' : 'bg-primary/10 border-primary/20 text-primary'}`}>
+                          {isVideo ? <Film className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
+                          <span className="truncate max-w-[150px]">{file.name}</span>
+                          <button
+                            onClick={() => handleRemoveFile(index)}
+                            className="ml-1 hover:opacity-70 transition-opacity"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      );
+                    })}
                     {attachedFiles.length < 3 && (
-                      <span className="text-xs text-on-surface-variant">还可上传 {3 - attachedFiles.length} 张</span>
+                      <span className="text-xs text-on-surface-variant">还可上传 {3 - attachedFiles.length} 个文件</span>
                     )}
                   </div>
                 )}
@@ -456,14 +668,14 @@ export default function App() {
                       type="file"
                       onChange={handleFileSelect}
                       className="hidden"
-                      accept="image/*"
+                      accept="image/*,video/*,.mp4,.mov,.avi,.wmv,.flv,.mkv,.webm"
                       multiple
                     />
                     <button
                       onClick={handleAttachClick}
                       disabled={attachedFiles.length >= 3}
                       className="flex items-center justify-center w-10 h-10 bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/20 rounded-full text-on-surface-variant hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title={attachedFiles.length >= 3 ? "已达最大图片数量" : "上传图片（最多3张）"}
+                      title={attachedFiles.length >= 3 ? "已达最大文件数量" : "上传图片或视频（最多3个，视频限30秒）"}
                     >
                       <Paperclip className="w-5 h-5" />
                     </button>

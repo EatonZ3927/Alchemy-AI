@@ -94,10 +94,20 @@ export default function App() {
     scrollToBottom();
   }, [messages, isTyping]);
 
+  const textareaResizeRef = useRef<number | null>(null);
+
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    e.target.style.height = 'auto';
-    e.target.style.height = `${Math.min(e.target.scrollHeight, 192)}px`;
     setInputValue(e.target.value);
+    // 延迟 textarea 自适应高度到下一帧，避免每次按键触发 3 次 reflow
+    if (textareaResizeRef.current) {
+      cancelAnimationFrame(textareaResizeRef.current);
+    }
+    textareaResizeRef.current = requestAnimationFrame(() => {
+      const textarea = e.target;
+      textarea.style.height = 'auto';
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 192)}px`;
+      textareaResizeRef.current = null;
+    });
   };
 
   const createOpenAIClient = () => {
@@ -609,7 +619,7 @@ export default function App() {
             transition={{ duration: 0.8, ease: "easeOut" }}
             className="relative mb-8 flex flex-col w-full max-w-4xl items-center"
           >
-            <div className="absolute -left-20 -top-20 w-96 h-96 bg-primary/5 blur-[120px] rounded-full"></div>
+            <div className="absolute -left-20 -top-20 w-96 h-96 glow-orb rounded-full"></div>
             <div className="relative z-10 w-full">
               <h2 className="text-5xl md:text-7xl font-extrabold font-headline tracking-tighter leading-tight mb-6 flex items-center gap-4 justify-center">
                 炼金术 <span className="text-primary">AI</span>

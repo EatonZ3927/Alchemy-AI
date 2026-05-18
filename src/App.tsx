@@ -781,8 +781,11 @@ export default function App() {
                 className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start items-start gap-4'}`}
               >
                 {msg.role === 'user' ? (
-                  <div className="max-w-[85%] md:max-w-[70%] bg-surface-container-high p-5 rounded-2xl rounded-tr-none shadow-lg border-l-2 border-primary/20">
-                    <p className="text-on-surface leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                  <div className="flex items-start gap-2 max-w-[85%] md:max-w-[70%]">
+                    <QuestionCopyButton text={msg.content} />
+                    <div className="bg-surface-container-high p-5 rounded-2xl rounded-tr-none shadow-lg border-l-2 border-primary/20">
+                      <p className="text-on-surface leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                    </div>
                   </div>
                 ) : (
                   <>
@@ -952,6 +955,26 @@ function CopyButton({ text }: { text: string }) {
     >
       {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
       <span>{copied ? '已复制' : '复制提示词'}</span>
+    </button>
+  );
+}
+
+function QuestionCopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="flex-shrink-0 flex items-center justify-center w-8 h-8 bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/20 rounded-full text-on-surface-variant hover:text-primary transition-all active:scale-90"
+      title="复制"
+    >
+      {copied ? <Check className="w-3.5 h-3.5 text-primary" /> : <Copy className="w-3.5 h-3.5" />}
     </button>
   );
 }

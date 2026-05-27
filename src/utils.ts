@@ -2,8 +2,22 @@
 export const IMAGE_FORMATS = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'];
 // 支持的视频格式
 export const VIDEO_FORMATS = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-ms-wmv', 'video/x-flv', 'video/x-matroska', 'video/webm', 'video/mov', 'video/avi', 'video/mkv'];
+// 最大上传文件数量
+export const MAX_ATTACHED_FILES = 3;
 // 最大视频时长（秒）
 export const MAX_VIDEO_DURATION = 30;
+
+export function isSupportedImageFile(file: File): boolean {
+  return IMAGE_FORMATS.includes(file.type) || file.type.startsWith('image/');
+}
+
+export function isSupportedVideoFile(file: File): boolean {
+  return VIDEO_FORMATS.includes(file.type) || file.type.startsWith('video/');
+}
+
+export function isSupportedMediaFile(file: File): boolean {
+  return isSupportedImageFile(file) || isSupportedVideoFile(file);
+}
 
 // 生成唯一 ID
 export function generateId(): string {

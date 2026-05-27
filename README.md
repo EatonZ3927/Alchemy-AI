@@ -15,6 +15,6 @@ View your app in AI Studio: https://ai.studio/apps/724e8373-22a2-4db0-af1b-4abb7
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Set the `VITE_QWEN_API_KEY` in [.env.local](.env.local) to your Alibaba DashScope API key
 3. Run the app:
    `npm run dev`

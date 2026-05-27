@@ -82,7 +82,6 @@ export function ChatMessage({
                       modelType={message.modelType}
                       reasoning={message.reasoning}
                       prompt={displayPrompt}
-                      chatboxUrl={message.chatboxUrl}
                     />
                   </div>
 

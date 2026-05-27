@@ -1,19 +1,31 @@
 import { useState } from 'react';
 import { Download } from 'lucide-react';
-import html2canvas from 'html2canvas';
 
-export function SaveImageButton({ userContent, model, modelType, reasoning, prompt, chatboxUrl }: {
+function escapeHtml(value = ''): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+export function SaveImageButton({ userContent, model, modelType, reasoning, prompt }: {
   userContent: string;
   model: string;
   modelType?: string;
   reasoning?: string;
   prompt?: string;
-  chatboxUrl?: string;
 }) {
   const [saving, setSaving] = useState(false);
 
   const handleSaveImage = async () => {
     setSaving(true);
+    const safeUserContent = escapeHtml(userContent);
+    const safeModel = escapeHtml(model);
+    const safeModelType = escapeHtml(modelType || 'PRO');
+    const safeReasoning = escapeHtml(reasoning || '');
+    const safePrompt = escapeHtml(prompt || '');
 
     const container = document.createElement('div');
     container.style.cssText = `
@@ -41,26 +53,26 @@ export function SaveImageButton({ userContent, model, modelType, reasoning, prom
 
       <div style="background: #201f1f; border-radius: 16px; padding: 24px; margin-bottom: 24px; border-left: 3px solid #6bfe9c;">
         <div style="font-size: 11px; font-weight: 700; color: #adaaaa; letter-spacing: 1.5px; margin-bottom: 12px; text-transform: uppercase;">用户需求</div>
-        <div style="color: #ffffff; line-height: 1.6; white-space: pre-wrap;">${userContent.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+        <div style="color: #ffffff; line-height: 1.6; white-space: pre-wrap;">${safeUserContent}</div>
       </div>
 
       <div style="background: #1a1919; border-radius: 16px; padding: 28px; border: 1px solid #494847;">
         <div style="margin-bottom: 20px;">
           <div style="font-size: 11px; font-weight: 700; color: #adaaaa; letter-spacing: 1.5px; margin-bottom: 8px; text-transform: uppercase;">推荐模型</div>
           <div style="display: flex; align-items: center; gap: 12px;">
-            <span style="font-size: 22px; font-weight: 700; color: #6bfe9c; font-family: 'Manrope', sans-serif;">${model}</span>
-            <span style="background: rgba(138,242,255,0.15); color: #8af2ff; font-size: 11px; padding: 4px 10px; border-radius: 20px; border: 1px solid rgba(138,242,255,0.25);">${modelType || 'PRO'}</span>
+            <span style="font-size: 22px; font-weight: 700; color: #6bfe9c; font-family: 'Manrope', sans-serif;">${safeModel}</span>
+            <span style="background: rgba(138,242,255,0.15); color: #8af2ff; font-size: 11px; padding: 4px 10px; border-radius: 20px; border: 1px solid rgba(138,242,255,0.25);">${safeModelType}</span>
           </div>
         </div>
 
         <div style="background: #131313; border-radius: 12px; padding: 20px; margin-bottom: 16px;">
           <div style="font-size: 11px; font-weight: 700; color: #6bfe9c; letter-spacing: 1.5px; margin-bottom: 10px; text-transform: uppercase;">推荐理由</div>
-          <div style="color: #adaaaa; line-height: 1.6; font-size: 14px;">${(reasoning || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+          <div style="color: #adaaaa; line-height: 1.6; font-size: 14px;">${safeReasoning}</div>
         </div>
 
         <div style="background: #262626; border-radius: 12px; padding: 20px; border: 1px solid rgba(107,254,156,0.15);">
           <div style="font-size: 11px; font-weight: 700; color: #adaaaa; letter-spacing: 1.5px; margin-bottom: 12px; text-transform: uppercase;">优化后的提示词</div>
-          <div style="color: #5bef90; line-height: 1.7; white-space: pre-wrap; font-family: monospace; font-size: 14px; background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px;">${(prompt || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+          <div style="color: #5bef90; line-height: 1.7; white-space: pre-wrap; font-family: monospace; font-size: 14px; background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px;">${safePrompt}</div>
         </div>
       </div>
 
@@ -72,6 +84,7 @@ export function SaveImageButton({ userContent, model, modelType, reasoning, prom
     document.body.appendChild(container);
 
     try {
+      const { default: html2canvas } = await import('html2canvas');
       const canvas = await html2canvas(container, {
         backgroundColor: '#0e0e0e',
         scale: 2,

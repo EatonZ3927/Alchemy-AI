@@ -1,8 +1,72 @@
-import React, { useState, useRef } from 'react';
+import { useState, useRef } from 'react';
+import type { ChangeEvent, KeyboardEvent } from 'react';
 import OpenAI from 'openai';
 import { Message } from '../types';
-import { IMAGE_FORMATS, VIDEO_FORMATS, MAX_VIDEO_DURATION, generateId, fileToBase64, getVideoDuration, extractVideoFrames } from '../utils';
+import { MAX_ATTACHED_FILES, MAX_VIDEO_DURATION, generateId, fileToBase64, getVideoDuration, extractVideoFrames, isSupportedImageFile, isSupportedMediaFile, isSupportedVideoFile } from '../utils';
 import { systemPrompt, summarizePrompt } from '../prompts';
+
+type PromptResponse = {
+  modelName?: string;
+  modelType?: string;
+  reasoning?: string;
+  optimizedPrompt?: string;
+  chatboxUrl?: string;
+};
+
+function buildHistoryMessages(
+  previousMessages: Message[],
+  latestUserContent: string,
+): OpenAI.Chat.ChatCompletionMessageParam[] {
+  return [
+    ...previousMessages.map((msg): OpenAI.Chat.ChatCompletionMessageParam => ({
+      role: msg.role === 'ai' ? 'assistant' : 'user',
+      content: msg.role === 'ai'
+        ? JSON.stringify({
+            modelName: msg.model,
+            modelType: msg.modelType,
+            reasoning: msg.reasoning,
+            optimizedPrompt: msg.prompt,
+            chatboxUrl: msg.chatboxUrl
+          })
+        : msg.content
+    })),
+    {
+      role: 'user',
+      content: latestUserContent
+    }
+  ];
+}
+
+function createAiMessage(result: PromptResponse, reasoning?: string): Message {
+  return {
+    id: generateId(),
+    role: 'ai',
+    content: '',
+    model: result.modelName,
+    modelType: result.modelType,
+    reasoning: reasoning ?? result.reasoning,
+    prompt: result.optimizedPrompt,
+    chatboxUrl: result.chatboxUrl,
+  };
+}
+
+function getGenerationErrorMessage(error: unknown): string {
+  const status = typeof error === 'object' && error !== null && 'status' in error
+    ? (error as { status?: number }).status
+    : undefined;
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (status === 429) {
+    return 'API 调用额度已耗尽，请稍后再试。';
+  }
+  if (status === 401) {
+    return 'API Key 无效，请检查配置。';
+  }
+  if (status === 403) {
+    return 'API Key 权限不足，请检查配置。';
+  }
+  return `抱歉，炼金术士的熔炉暂时熄火了。错误: ${message}`;
+}
 
 export function useChat() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -72,14 +136,7 @@ export function useChat() {
     setPromptLangs(prev => ({ ...prev, [msgId]: next }));
   };
 
-  const getDisplayPrompt = (msg: Message): string => {
-    if (promptLangs[msg.id] === 'en' && translatedPrompts[msg.id]) {
-      return translatedPrompts[msg.id];
-    }
-    return msg.prompt || '';
-  };
-
-  const analyzeImage = async (imageBase64: string, index?: number): Promise<string> => {
+  const analyzeImage = async (imageBase64: string, mimeType = 'image/jpeg', index?: number): Promise<string> => {
     const openai = createOpenAIClient();
 
     const visionPrompt = `请详细分析这张图片${index ? `（第${index}张）` : ''}，识别并描述以下内容：
@@ -102,7 +159,7 @@ export function useChat() {
             {
               type: 'image_url',
               image_url: {
-                url: `data:image/jpeg;base64,${imageBase64}`
+                url: `data:${mimeType || 'image/jpeg'};base64,${imageBase64}`
               }
             }
           ]
@@ -117,7 +174,7 @@ export function useChat() {
     const results: string[] = [];
     for (let i = 0; i < files.length; i++) {
       const base64 = await fileToBase64(files[i]);
-      const analysis = await analyzeImage(base64, i + 1);
+      const analysis = await analyzeImage(base64, files[i].type, i + 1);
       results.push(`【图片${i + 1}分析】\n${analysis}`);
     }
     return results;
@@ -202,8 +259,8 @@ export function useChat() {
 
     const userText = inputValue.trim();
     const currentFiles = [...attachedFiles];
-    const imageFiles = currentFiles.filter(f => IMAGE_FORMATS.includes(f.type));
-    const videoFiles = currentFiles.filter(f => VIDEO_FORMATS.includes(f.type) || f.type.startsWith('video/'));
+    const imageFiles = currentFiles.filter(isSupportedImageFile);
+    const videoFiles = currentFiles.filter(isSupportedVideoFile);
     const hasImages = imageFiles.length > 0;
     const hasVideos = videoFiles.length > 0;
 
@@ -261,7 +318,7 @@ export function useChat() {
 
     if (mediaAnalysisResults.length > 0) {
       const combinedAnalysis = mediaAnalysisResults.join('\n\n');
-      const mediaType = hasVideos ? '视频' : '图片';
+      const mediaType = hasImages && hasVideos ? '图片和视频' : hasVideos ? '视频' : '图片';
       enhancedUserText = userText
         ? `${userText}\n\n${combinedAnalysis}\n\n请根据以上所有${mediaType}分析内容，综合生成优化后的提示词。`
         : `请根据以下${mediaType}分析结果生成一个专业的提示词。\n\n${combinedAnalysis}`;
@@ -269,24 +326,7 @@ export function useChat() {
 
     try {
       const openai = createOpenAIClient();
-
-      const historyMessages: OpenAI.Chat.ChatCompletionMessageParam[] = messages.map(msg => ({
-        role: msg.role === 'ai' ? 'assistant' as const : 'user' as const,
-        content: msg.role === 'ai'
-          ? JSON.stringify({
-              modelName: msg.model,
-              modelType: msg.modelType,
-              reasoning: msg.reasoning,
-              optimizedPrompt: msg.prompt,
-              chatboxUrl: msg.chatboxUrl
-            })
-          : msg.content
-      }));
-
-      historyMessages.push({
-        role: 'user' as const,
-        content: enhancedUserText
-      });
+      const historyMessages = buildHistoryMessages(messages, enhancedUserText);
 
       const response = await openai.chat.completions.create({
         model: 'qwen-plus',
@@ -298,35 +338,23 @@ export function useChat() {
       });
 
       if (response.choices[0]?.message?.content) {
-        const result = JSON.parse(response.choices[0].message.content);
-        const aiMsg: Message = {
-          id: generateId(),
-          role: 'ai',
-          content: '',
-          model: result.modelName,
-          modelType: result.modelType,
-          reasoning: mediaAnalysisResults.length > 0 ? `${result.reasoning}\n\n【已融合${mediaAnalysisResults.length}个媒体文件分析内容】` : result.reasoning,
-          prompt: result.optimizedPrompt,
-          chatboxUrl: result.chatboxUrl,
-        };
+        const result = JSON.parse(response.choices[0].message.content) as PromptResponse;
+        const reasoning = mediaAnalysisResults.length > 0
+          ? [result.reasoning, `【已融合${mediaAnalysisResults.length}个媒体文件分析内容】`].filter(Boolean).join('\n\n')
+          : result.reasoning;
+        const aiMsg = createAiMessage(
+          result,
+          reasoning,
+        );
         setMessages(prev => [...prev, aiMsg]);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("AI Generation Error:", error);
-      let errorMessage = `抱歉，炼金术士的熔炉暂时熄火了。错误: ${error?.message || String(error)}`;
-
-      if (error?.status === 429) {
-        errorMessage = 'API 调用额度已耗尽，请稍后再试。';
-      } else if (error?.status === 401) {
-        errorMessage = 'API Key 无效，请检查配置。';
-      } else if (error?.status === 403) {
-        errorMessage = 'API Key 权限不足，请检查配置。';
-      }
 
       const errorMsg: Message = {
         id: generateId(),
         role: 'ai',
-        content: errorMessage,
+        content: getGenerationErrorMessage(error),
       };
       setMessages(prev => [...prev, errorMsg]);
     } finally {
@@ -349,24 +377,7 @@ export function useChat() {
 
     try {
       const openai = createOpenAIClient();
-
-      const historyMessages: OpenAI.Chat.ChatCompletionMessageParam[] = messages.map(msg => ({
-        role: msg.role === 'ai' ? 'assistant' as const : 'user' as const,
-        content: msg.role === 'ai'
-          ? JSON.stringify({
-              modelName: msg.model,
-              modelType: msg.modelType,
-              reasoning: msg.reasoning,
-              optimizedPrompt: msg.prompt,
-              chatboxUrl: msg.chatboxUrl
-            })
-          : msg.content
-      }));
-
-      historyMessages.push({
-        role: 'user' as const,
-        content: summaryRequestText
-      });
+      const historyMessages = buildHistoryMessages(messages, summaryRequestText);
 
       const response = await openai.chat.completions.create({
         model: 'qwen-plus',
@@ -378,31 +389,17 @@ export function useChat() {
       });
 
       if (response.choices[0]?.message?.content) {
-        const result = JSON.parse(response.choices[0].message.content);
-        const aiMsg: Message = {
-          id: generateId(),
-          role: 'ai',
-          content: '',
-          model: result.modelName,
-          modelType: result.modelType,
-          reasoning: result.reasoning,
-          prompt: result.optimizedPrompt,
-          chatboxUrl: result.chatboxUrl,
-        };
+        const result = JSON.parse(response.choices[0].message.content) as PromptResponse;
+        const aiMsg = createAiMessage(result);
         setMessages(prev => [...prev, aiMsg]);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("AI Generation Error:", error);
-      let errorMessage = `抱歉，炼金术士的熔炉暂时熄火了。错误: ${error?.message || String(error)}`;
-
-      if (error?.status === 429) {
-        errorMessage = 'API 调用额度已耗尽，请稍后再试。';
-      }
 
       const errorMsg: Message = {
         id: generateId(),
         role: 'ai',
-        content: errorMessage,
+        content: getGenerationErrorMessage(error),
       };
       setMessages(prev => [...prev, errorMsg]);
     } finally {
@@ -410,14 +407,14 @@ export function useChat() {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
     }
   };
 
-  const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+  const handleInput = (e: ChangeEvent<HTMLTextAreaElement>) => {
     setInputValue(e.target.value);
     if (textareaResizeRef.current) {
       cancelAnimationFrame(textareaResizeRef.current);
@@ -430,20 +427,15 @@ export function useChat() {
     });
   };
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files) {
       const allFiles: File[] = Array.from(files);
-      const validFiles: File[] = allFiles.filter(f =>
-        IMAGE_FORMATS.includes(f.type) ||
-        VIDEO_FORMATS.includes(f.type) ||
-        f.type.startsWith('image/') ||
-        f.type.startsWith('video/')
-      );
+      const validFiles: File[] = allFiles.filter(isSupportedMediaFile);
 
       const validFilesWithDuration: File[] = [];
       for (const file of validFiles) {
-        if (VIDEO_FORMATS.includes(file.type) || file.type.startsWith('video/')) {
+        if (isSupportedVideoFile(file)) {
           try {
             const duration = await getVideoDuration(file);
             if (duration <= MAX_VIDEO_DURATION) {
@@ -459,7 +451,7 @@ export function useChat() {
         }
       }
 
-      const totalFiles = [...attachedFiles, ...validFilesWithDuration].slice(0, 3);
+      const totalFiles = [...attachedFiles, ...validFilesWithDuration].slice(0, MAX_ATTACHED_FILES);
       setAttachedFiles(totalFiles);
     }
     if (fileInputRef.current) {
@@ -498,7 +490,6 @@ export function useChat() {
     handleAttachClick,
     handleRemoveFile,
     togglePromptLang,
-    getDisplayPrompt,
     getUserContentForMessage,
     clearMessages,
 

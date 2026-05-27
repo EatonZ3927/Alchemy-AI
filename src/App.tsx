@@ -3,17 +3,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useRef, useEffect } from 'react';
+import { useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Paperclip, Sparkles, Layers, Film, Image as ImageIcon } from 'lucide-react';
 import { useChat } from './hooks/useChat';
 import { FlaskIcon } from './components/FlaskIcon';
 import { ChatMessage } from './components/ChatMessage';
-import { VIDEO_FORMATS } from './utils';
+import { MAX_ATTACHED_FILES, isSupportedVideoFile } from './utils';
 
 export default function App() {
   const chat = useChat();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const attachedFileCount = chat.attachedFiles.length;
+  const canAttachMore = attachedFileCount < MAX_ATTACHED_FILES;
+  const canSubmit = chat.inputValue.trim().length > 0 || attachedFileCount > 0;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -63,10 +66,10 @@ export default function App() {
                   className="w-full bg-transparent border-none focus:ring-0 focus:outline-none text-on-surface placeholder:text-on-surface-variant/50 p-4 min-h-[56px] max-h-48 resize-none scroll-py-4 font-body"
                   placeholder="输入你的灵感，开始炼制..."
                 />
-                {chat.attachedFiles.length > 0 && (
+                {attachedFileCount > 0 && (
                   <div className="flex flex-wrap items-center gap-2 px-4 pb-2">
                     {chat.attachedFiles.map((file, index) => {
-                      const isVideo = VIDEO_FORMATS.includes(file.type) || file.type.startsWith('video/');
+                      const isVideo = isSupportedVideoFile(file);
                       return (
                         <div key={index} className={`flex items-center gap-2 px-3 py-1.5 border rounded-lg text-xs ${isVideo ? 'bg-tertiary/10 border-tertiary/20 text-tertiary' : 'bg-primary/10 border-primary/20 text-primary'}`}>
                           {isVideo ? <Film className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
@@ -80,8 +83,8 @@ export default function App() {
                         </div>
                       );
                     })}
-                    {chat.attachedFiles.length < 3 && (
-                      <span className="text-xs text-on-surface-variant">还可上传 {3 - chat.attachedFiles.length} 个文件</span>
+                    {canAttachMore && (
+                      <span className="text-xs text-on-surface-variant">还可上传 {MAX_ATTACHED_FILES - attachedFileCount} 个文件</span>
                     )}
                   </div>
                 )}
@@ -97,19 +100,19 @@ export default function App() {
                     />
                     <button
                       onClick={chat.handleAttachClick}
-                      disabled={chat.attachedFiles.length >= 3}
+                      disabled={!canAttachMore}
                       className="flex items-center justify-center w-10 h-10 bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/20 rounded-full text-on-surface-variant hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title={chat.attachedFiles.length >= 3 ? "已达最大文件数量" : "上传图片或视频（最多3个，视频限30秒）"}
+                      title={canAttachMore ? `上传图片或视频（最多${MAX_ATTACHED_FILES}个，视频限30秒）` : "已达最大文件数量"}
                     >
                       <Paperclip className="w-5 h-5" />
                     </button>
-                    {chat.attachedFiles.length > 0 && (
-                      <span className="text-xs text-on-surface-variant">{chat.attachedFiles.length}/3</span>
+                    {attachedFileCount > 0 && (
+                      <span className="text-xs text-on-surface-variant">{attachedFileCount}/{MAX_ATTACHED_FILES}</span>
                     )}
                   </div>
                   <button
                     onClick={chat.handleSubmit}
-                    disabled={!chat.inputValue.trim() && chat.attachedFiles.length === 0}
+                    disabled={!canSubmit}
                     className="flex items-center gap-2 px-6 py-2.5 bg-primary text-on-primary rounded-full font-label tracking-widest uppercase text-sm font-bold active:scale-95 transition-all shadow-lg shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     炼制
@@ -213,7 +216,7 @@ export default function App() {
             <div className="flex items-center justify-end px-2 md:px-0 pb-2 md:pb-0">
               <button
                 onClick={chat.handleSubmit}
-                disabled={!chat.inputValue.trim() && chat.attachedFiles.length === 0}
+                disabled={!canSubmit}
                 className="flex items-center gap-2 py-2.5 bg-primary text-on-primary rounded-full font-label tracking-widest uppercase text-sm font-bold active:scale-95 transition-all shadow-lg shadow-primary/20 flex items-center justify-center min-w-[3.5rem] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Sparkles className="w-5 h-5 fill-current" />

@@ -202,6 +202,25 @@ export default function App() {
               <span>总结提示词</span>
             </button>
           </div>
+          {attachedFileCount > 0 && (
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {chat.attachedFiles.map((file, index) => {
+                const isVideo = isSupportedVideoFile(file);
+                return (
+                  <div key={index} className={`flex items-center gap-2 px-3 py-1.5 border rounded-lg text-xs ${isVideo ? 'bg-tertiary/10 border-tertiary/20 text-tertiary' : 'bg-primary/10 border-primary/20 text-primary'}`}>
+                    {isVideo ? <Film className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
+                    <span className="truncate max-w-[180px]">{file.name}</span>
+                    <button
+                      onClick={() => chat.handleRemoveFile(index)}
+                      className="ml-1 hover:opacity-70 transition-opacity"
+                    >
+                      ×
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div className="glass-effect bg-[#262626]/60 rounded-2xl border border-[#494847]/20 shadow-2xl p-2 flex flex-col md:flex-row items-stretch md:items-center gap-2">
             <div className="flex-grow relative">
               <textarea
@@ -213,7 +232,26 @@ export default function App() {
                 rows={1}
               />
             </div>
-            <div className="flex items-center justify-end px-2 md:px-0 pb-2 md:pb-0">
+            <div className="flex items-center justify-end gap-2 px-2 md:px-0 pb-2 md:pb-0">
+              <input
+                ref={chat.fileInputRef}
+                type="file"
+                onChange={chat.handleFileSelect}
+                className="hidden"
+                accept="image/*,video/*,.mp4,.mov,.avi,.wmv,.flv,.mkv,.webm"
+                multiple
+              />
+              <button
+                onClick={chat.handleAttachClick}
+                disabled={!canAttachMore}
+                className="flex items-center justify-center w-10 h-10 bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/20 rounded-full text-on-surface-variant hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title={canAttachMore ? `上传图片或视频（最多${MAX_ATTACHED_FILES}个，视频限30秒）` : "已达最大文件数量"}
+              >
+                <Paperclip className="w-5 h-5" />
+              </button>
+              {attachedFileCount > 0 && (
+                <span className="text-xs text-on-surface-variant">{attachedFileCount}/{MAX_ATTACHED_FILES}</span>
+              )}
               <button
                 onClick={chat.handleSubmit}
                 disabled={!canSubmit}

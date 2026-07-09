@@ -43,8 +43,13 @@ export function getVideoDuration(file: File): Promise<number> {
   return new Promise((resolve, reject) => {
     const video = document.createElement('video');
     video.preload = 'metadata';
+    video.playsInline = true;
     video.onloadedmetadata = () => {
       URL.revokeObjectURL(video.src);
+      if (!Number.isFinite(video.duration) || video.duration <= 0) {
+        reject(new Error('无法读取有效的视频时长'));
+        return;
+      }
       resolve(video.duration);
     };
     video.onerror = () => {
@@ -61,6 +66,7 @@ export function extractVideoFrames(file: File, numFrames: number = 5): Promise<s
     const video = document.createElement('video');
     video.preload = 'metadata';
     video.muted = true;
+    video.playsInline = true;
 
     video.onloadedmetadata = async () => {
       const duration = video.duration;
@@ -68,7 +74,14 @@ export function extractVideoFrames(file: File, numFrames: number = 5): Promise<s
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
 
+      if (!Number.isFinite(duration) || duration <= 0) {
+        URL.revokeObjectURL(video.src);
+        reject(new Error('无法读取有效的视频时长'));
+        return;
+      }
+
       if (!ctx) {
+        URL.revokeObjectURL(video.src);
         reject(new Error('无法创建Canvas上下文'));
         return;
       }
@@ -76,24 +89,42 @@ export function extractVideoFrames(file: File, numFrames: number = 5): Promise<s
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
 
+      if (canvas.width <= 0 || canvas.height <= 0) {
+        URL.revokeObjectURL(video.src);
+        reject(new Error('无法读取有效的视频画面'));
+        return;
+      }
+
       const actualFrames = Math.min(numFrames, Math.ceil(duration / 5));
       const interval = duration / (actualFrames + 1);
 
-      for (let i = 1; i <= actualFrames; i++) {
-        const time = i * interval;
-        await new Promise<void>((res) => {
-          video.currentTime = time;
-          video.onseeked = () => {
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const frameData = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-            frames.push(frameData);
-            res();
-          };
-        });
-      }
+      try {
+        for (let i = 1; i <= actualFrames; i++) {
+          const time = i * interval;
+          await new Promise<void>((res, rej) => {
+            const timeoutId = window.setTimeout(() => {
+              video.onseeked = null;
+              rej(new Error('视频帧提取超时'));
+            }, 8000);
 
-      URL.revokeObjectURL(video.src);
-      resolve(frames);
+            video.onseeked = () => {
+              window.clearTimeout(timeoutId);
+              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+              const frameData = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+              frames.push(frameData);
+              res();
+            };
+
+            video.currentTime = Math.min(time, Math.max(duration - 0.1, 0));
+          });
+        }
+
+        URL.revokeObjectURL(video.src);
+        resolve(frames);
+      } catch (error) {
+        URL.revokeObjectURL(video.src);
+        reject(error);
+      }
     };
 
     video.onerror = () => {

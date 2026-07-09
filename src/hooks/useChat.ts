@@ -68,6 +68,19 @@ function getGenerationErrorMessage(error: unknown): string {
   return `抱歉，炼金术士的熔炉暂时熄火了。错误: ${message}`;
 }
 
+function getMediaErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim()) {
+      return message;
+    }
+  }
+  return fallback;
+}
+
 export function useChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -173,9 +186,14 @@ export function useChat() {
   const analyzeMultipleImages = async (files: File[]): Promise<string[]> => {
     const results: string[] = [];
     for (let i = 0; i < files.length; i++) {
-      const base64 = await fileToBase64(files[i]);
-      const analysis = await analyzeImage(base64, files[i].type, i + 1);
-      results.push(`【图片${i + 1}分析】\n${analysis}`);
+      try {
+        const base64 = await fileToBase64(files[i]);
+        const analysis = await analyzeImage(base64, files[i].type, i + 1);
+        results.push(`【图片${i + 1}分析】\n${analysis}`);
+      } catch (error) {
+        console.error('Image analysis error:', error);
+        results.push(`【图片${i + 1}分析失败】\n${getMediaErrorMessage(error, '无法分析图片内容')}`);
+      }
     }
     return results;
   };
@@ -221,6 +239,9 @@ export function useChat() {
     }
 
     const frames = await extractVideoFrames(file);
+    if (frames.length === 0) {
+      throw new Error('无法从视频中提取有效画面');
+    }
 
     const frameAnalyses: string[] = [];
     for (let i = 0; i < frames.length; i++) {
@@ -301,6 +322,7 @@ export function useChat() {
         mediaAnalysisResults.push(...imageResults);
       } catch (error) {
         console.error('Image analysis error:', error);
+        mediaAnalysisResults.push(`【图片分析失败】\n${getMediaErrorMessage(error, '无法分析图片内容')}`);
       }
     }
 
@@ -309,9 +331,9 @@ export function useChat() {
         try {
           const videoAnalysis = await analyzeVideo(videoFiles[i]);
           mediaAnalysisResults.push(`【视频${i + 1}分析】\n${videoAnalysis}`);
-        } catch (error: any) {
+        } catch (error: unknown) {
           console.error('Video analysis error:', error);
-          mediaAnalysisResults.push(`【视频${i + 1}分析失败】\n${error?.message || '无法分析视频内容'}`);
+          mediaAnalysisResults.push(`【视频${i + 1}分析失败】\n${getMediaErrorMessage(error, '无法分析视频内容')}`);
         }
       }
     }

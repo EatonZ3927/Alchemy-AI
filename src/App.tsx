@@ -5,10 +5,11 @@
 
 import { useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Paperclip, Sparkles, Layers, Film, Image as ImageIcon } from 'lucide-react';
+import { Sparkles, Layers, Film, Image as ImageIcon } from 'lucide-react';
 import { useChat } from './hooks/useChat';
 import { FlaskIcon } from './components/FlaskIcon';
 import { ChatMessage } from './components/ChatMessage';
+import { MediaUploadButtons } from './components/MediaUploadButtons';
 import { MAX_ATTACHED_FILES, isSupportedVideoFile } from './utils';
 
 export default function App() {
@@ -90,22 +91,14 @@ export default function App() {
                 )}
                 <div className="flex items-center justify-between px-4 pb-3">
                   <div className="flex items-center gap-2">
-                    <input
-                      ref={chat.fileInputRef}
-                      type="file"
-                      onChange={chat.handleFileSelect}
-                      className="hidden"
-                      accept="image/*,video/*,.mp4,.mov,.avi,.wmv,.flv,.mkv,.webm"
-                      multiple
-                    />
-                    <button
-                      onClick={chat.handleAttachClick}
+                    <MediaUploadButtons
+                      imageInputRef={chat.imageInputRef}
+                      videoInputRef={chat.videoInputRef}
                       disabled={!canAttachMore}
-                      className="flex items-center justify-center w-10 h-10 bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/20 rounded-full text-on-surface-variant hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title={canAttachMore ? `上传图片或视频（最多${MAX_ATTACHED_FILES}个，视频限30秒）` : "已达最大文件数量"}
-                    >
-                      <Paperclip className="w-5 h-5" />
-                    </button>
+                      onFileSelect={chat.handleFileSelect}
+                      onImageClick={chat.handleImageAttachClick}
+                      onVideoClick={chat.handleVideoAttachClick}
+                    />
                     {attachedFileCount > 0 && (
                       <span className="text-xs text-on-surface-variant">{attachedFileCount}/{MAX_ATTACHED_FILES}</span>
                     )}
@@ -233,22 +226,14 @@ export default function App() {
               />
             </div>
             <div className="flex items-center justify-end gap-2 px-2 md:px-0 pb-2 md:pb-0">
-              <input
-                ref={chat.fileInputRef}
-                type="file"
-                onChange={chat.handleFileSelect}
-                className="hidden"
-                accept="image/*,video/*,.mp4,.mov,.avi,.wmv,.flv,.mkv,.webm"
-                multiple
-              />
-              <button
-                onClick={chat.handleAttachClick}
+              <MediaUploadButtons
+                imageInputRef={chat.imageInputRef}
+                videoInputRef={chat.videoInputRef}
                 disabled={!canAttachMore}
-                className="flex items-center justify-center w-10 h-10 bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/20 rounded-full text-on-surface-variant hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title={canAttachMore ? `上传图片或视频（最多${MAX_ATTACHED_FILES}个，视频限30秒）` : "已达最大文件数量"}
-              >
-                <Paperclip className="w-5 h-5" />
-              </button>
+                onFileSelect={chat.handleFileSelect}
+                onImageClick={chat.handleImageAttachClick}
+                onVideoClick={chat.handleVideoAttachClick}
+              />
               {attachedFileCount > 0 && (
                 <span className="text-xs text-on-surface-variant">{attachedFileCount}/{MAX_ATTACHED_FILES}</span>
               )}

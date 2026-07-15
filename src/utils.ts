@@ -4,6 +4,12 @@ export const IMAGE_FORMATS = ['image/jpeg', 'image/png', 'image/gif', 'image/web
 export const VIDEO_FORMATS = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-ms-wmv', 'video/x-flv', 'video/x-matroska', 'video/webm', 'video/mov', 'video/avi', 'video/mkv'];
 // 最大上传文件数量
 export const MAX_ATTACHED_FILES = 3;
+// 单张图片最大 7 MB，确保 Base64 编码后低于百炼 10 MB 限制
+export const MAX_IMAGE_FILE_SIZE_MB = 7;
+export const MAX_IMAGE_FILE_SIZE = MAX_IMAGE_FILE_SIZE_MB * 1024 * 1024;
+// 单个视频最大 200 MB；视频仅在浏览器中抽帧，不直接上传原文件
+export const MAX_VIDEO_FILE_SIZE_MB = 200;
+export const MAX_VIDEO_FILE_SIZE = MAX_VIDEO_FILE_SIZE_MB * 1024 * 1024;
 // 最大视频时长（秒）
 export const MAX_VIDEO_DURATION = 30;
 

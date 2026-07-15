@@ -118,7 +118,7 @@ export function useChat() {
     try {
       const openai = createOpenAIClient();
       const response = await openai.chat.completions.create({
-        model: 'qwen-plus',
+        model: 'deepseek-v4-flash',
         messages: [
           {
             role: 'system',
@@ -163,7 +163,7 @@ export function useChat() {
 请用中文详细描述，格式清晰，每个部分用【】标记标题。`;
 
     const response = await openai.chat.completions.create({
-      model: 'qwen-vl-max',
+      model: 'qwen3.7-plus',
       messages: [
         {
           role: 'user',
@@ -212,7 +212,7 @@ export function useChat() {
 请用中文简洁描述，重点突出关键元素。`;
 
     const response = await openai.chat.completions.create({
-      model: 'qwen-vl-max',
+      model: 'qwen3.7-plus',
       messages: [
         {
           role: 'user',
@@ -251,7 +251,7 @@ export function useChat() {
 
     const openai = createOpenAIClient();
     const summaryResponse = await openai.chat.completions.create({
-      model: 'qwen-plus',
+      model: 'deepseek-v4-flash',
       messages: [
         {
           role: 'system',
@@ -351,7 +351,7 @@ export function useChat() {
       const historyMessages = buildHistoryMessages(messages, enhancedUserText);
 
       const response = await openai.chat.completions.create({
-        model: 'qwen-plus',
+        model: 'deepseek-v4-flash',
         messages: [
           { role: 'system', content: systemPrompt },
           ...historyMessages
@@ -402,7 +402,7 @@ export function useChat() {
       const historyMessages = buildHistoryMessages(messages, summaryRequestText);
 
       const response = await openai.chat.completions.create({
-        model: 'qwen-plus',
+        model: 'deepseek-v4-flash',
         messages: [
           { role: 'system', content: summarizePrompt },
           ...historyMessages

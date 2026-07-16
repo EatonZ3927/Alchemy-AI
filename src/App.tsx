@@ -5,11 +5,45 @@
 
 import { useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Paperclip, Sparkles, Layers, Film, Image as ImageIcon } from 'lucide-react';
+import { AlertTriangle, Sparkles, Layers, Film, Image as ImageIcon } from 'lucide-react';
 import { useChat } from './hooks/useChat';
 import { FlaskIcon } from './components/FlaskIcon';
 import { ChatMessage } from './components/ChatMessage';
+import { MediaUploadButtons } from './components/MediaUploadButtons';
 import { MAX_ATTACHED_FILES, isSupportedVideoFile } from './utils';
+
+type UploadLimitNoticeProps = {
+  notice: string | null;
+};
+
+function UploadLimitNotice({ notice }: UploadLimitNoticeProps) {
+  return (
+    <div
+      className="pointer-events-none fixed inset-0 z-[100] flex items-center justify-center px-6"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      <AnimatePresence>
+        {notice && (
+          <motion.div
+            key="upload-limit-notice"
+            role="alert"
+            initial={{ opacity: 0, scale: 0.96, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.98, y: -6 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            className="flex max-w-sm items-center gap-3 rounded-lg border border-primary/30 bg-surface-container-high/95 px-5 py-4 text-on-surface shadow-2xl shadow-primary/20 backdrop-blur-xl"
+          >
+            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <span className="font-label text-sm font-semibold">{notice}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 export default function App() {
   const chat = useChat();
@@ -30,6 +64,7 @@ export default function App() {
   if (chat.messages.length === 0) {
     return (
       <div className="bg-surface text-on-surface font-body selection:bg-primary/30 flex flex-col items-center min-h-screen">
+        <UploadLimitNotice notice={chat.uploadLimitNotice} />
         <main className="flex flex-col justify-center px-6 w-full max-w-7xl mx-auto h-[calc(100vh-2.5rem)] items-center">
           <motion.section
             initial={{ opacity: 0, y: 20 }}
@@ -90,22 +125,14 @@ export default function App() {
                 )}
                 <div className="flex items-center justify-between px-4 pb-3">
                   <div className="flex items-center gap-2">
-                    <input
-                      ref={chat.fileInputRef}
-                      type="file"
-                      onChange={chat.handleFileSelect}
-                      className="hidden"
-                      accept="image/*,video/*,.mp4,.mov,.avi,.wmv,.flv,.mkv,.webm"
-                      multiple
-                    />
-                    <button
-                      onClick={chat.handleAttachClick}
+                    <MediaUploadButtons
+                      imageInputRef={chat.imageInputRef}
+                      videoInputRef={chat.videoInputRef}
                       disabled={!canAttachMore}
-                      className="flex items-center justify-center w-10 h-10 bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/20 rounded-full text-on-surface-variant hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title={canAttachMore ? `上传图片或视频（最多${MAX_ATTACHED_FILES}个，视频限30秒）` : "已达最大文件数量"}
-                    >
-                      <Paperclip className="w-5 h-5" />
-                    </button>
+                      onFileSelect={chat.handleFileSelect}
+                      onImageClick={chat.handleImageAttachClick}
+                      onVideoClick={chat.handleVideoAttachClick}
+                    />
                     {attachedFileCount > 0 && (
                       <span className="text-xs text-on-surface-variant">{attachedFileCount}/{MAX_ATTACHED_FILES}</span>
                     )}
@@ -135,6 +162,7 @@ export default function App() {
   // 对话状态
   return (
     <div className="bg-background text-on-surface font-body selection:bg-primary selection:text-on-primary min-h-screen flex flex-col">
+      <UploadLimitNotice notice={chat.uploadLimitNotice} />
       <header className="fixed top-0 left-0 w-full h-14 bg-surface/80 glass-effect border-b border-outline-variant/10 z-50 flex items-center px-4">
         <h1 className="text-[#00FF41] font-headline font-extrabold tracking-widest text-sm uppercase mx-auto">炼金术士AI工作坊</h1>
       </header>
@@ -233,22 +261,14 @@ export default function App() {
               />
             </div>
             <div className="flex items-center justify-end gap-2 px-2 md:px-0 pb-2 md:pb-0">
-              <input
-                ref={chat.fileInputRef}
-                type="file"
-                onChange={chat.handleFileSelect}
-                className="hidden"
-                accept="image/*,video/*,.mp4,.mov,.avi,.wmv,.flv,.mkv,.webm"
-                multiple
-              />
-              <button
-                onClick={chat.handleAttachClick}
+              <MediaUploadButtons
+                imageInputRef={chat.imageInputRef}
+                videoInputRef={chat.videoInputRef}
                 disabled={!canAttachMore}
-                className="flex items-center justify-center w-10 h-10 bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/20 rounded-full text-on-surface-variant hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title={canAttachMore ? `上传图片或视频（最多${MAX_ATTACHED_FILES}个，视频限30秒）` : "已达最大文件数量"}
-              >
-                <Paperclip className="w-5 h-5" />
-              </button>
+                onFileSelect={chat.handleFileSelect}
+                onImageClick={chat.handleImageAttachClick}
+                onVideoClick={chat.handleVideoAttachClick}
+              />
               {attachedFileCount > 0 && (
                 <span className="text-xs text-on-surface-variant">{attachedFileCount}/{MAX_ATTACHED_FILES}</span>
               )}

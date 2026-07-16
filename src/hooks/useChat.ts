@@ -1,8 +1,8 @@
-import { useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent } from 'react';
 import OpenAI from 'openai';
 import { Message } from '../types';
-import { MAX_ATTACHED_FILES, MAX_VIDEO_DURATION, generateId, fileToBase64, getVideoDuration, extractVideoFrames, isSupportedImageFile, isSupportedMediaFile, isSupportedVideoFile } from '../utils';
+import { MAX_ATTACHED_FILES, MAX_IMAGE_FILE_SIZE, MAX_VIDEO_DURATION, MAX_VIDEO_FILE_SIZE, generateId, fileToBase64, getVideoDuration, extractVideoFrames, isSupportedImageFile, isSupportedMediaFile, isSupportedVideoFile } from '../utils';
 import { systemPrompt, summarizePrompt } from '../prompts';
 
 type PromptResponse = {
@@ -12,6 +12,8 @@ type PromptResponse = {
   optimizedPrompt?: string;
   chatboxUrl?: string;
 };
+
+const UPLOAD_LIMIT_NOTICE_DURATION = 3000;
 
 function buildHistoryMessages(
   previousMessages: Message[],
@@ -89,9 +91,18 @@ export function useChat() {
   const [promptLangs, setPromptLangs] = useState<Record<string, 'zh' | 'en'>>({});
   const [translatedPrompts, setTranslatedPrompts] = useState<Record<string, string>>({});
   const [translating, setTranslating] = useState<Record<string, boolean>>({});
+  const [uploadLimitNotice, setUploadLimitNotice] = useState<string | null>(null);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
   const textareaResizeRef = useRef<number | null>(null);
+  const uploadLimitNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (uploadLimitNoticeTimerRef.current !== null) {
+      clearTimeout(uploadLimitNoticeTimerRef.current);
+    }
+  }, []);
 
   const createOpenAIClient = () => {
     return new OpenAI({
@@ -449,40 +460,79 @@ export function useChat() {
     });
   };
 
+  const showUploadLimitNotice = () => {
+    if (uploadLimitNoticeTimerRef.current !== null) {
+      clearTimeout(uploadLimitNoticeTimerRef.current);
+    }
+
+    setUploadLimitNotice('上传文件超出容量限制');
+
+    uploadLimitNoticeTimerRef.current = setTimeout(() => {
+      setUploadLimitNotice(null);
+      uploadLimitNoticeTimerRef.current = null;
+    }, UPLOAD_LIMIT_NOTICE_DURATION);
+  };
+
   const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files) {
-      const allFiles: File[] = Array.from(files);
-      const validFiles: File[] = allFiles.filter(isSupportedMediaFile);
+      const selectedFiles: File[] = Array.from(files);
+      const acceptedFiles: File[] = [];
+      let hasShownSizeLimitNotice = false;
+      for (const file of selectedFiles) {
+        if (!isSupportedMediaFile(file)) {
+          alert(`文件 "${file.name}" 格式不受支持，已自动跳过`);
+          continue;
+        }
 
-      const validFilesWithDuration: File[] = [];
-      for (const file of validFiles) {
+        if (isSupportedImageFile(file) && file.size > MAX_IMAGE_FILE_SIZE) {
+          if (!hasShownSizeLimitNotice) {
+            showUploadLimitNotice();
+            hasShownSizeLimitNotice = true;
+          }
+          continue;
+        }
+
         if (isSupportedVideoFile(file)) {
+          if (file.size > MAX_VIDEO_FILE_SIZE) {
+            if (!hasShownSizeLimitNotice) {
+              showUploadLimitNotice();
+              hasShownSizeLimitNotice = true;
+            }
+            continue;
+          }
+
           try {
             const duration = await getVideoDuration(file);
             if (duration <= MAX_VIDEO_DURATION) {
-              validFilesWithDuration.push(file);
+              acceptedFiles.push(file);
             } else {
               alert(`视频 "${file.name}" 时长超过${MAX_VIDEO_DURATION}秒限制（当前${Math.round(duration)}秒），已自动跳过`);
             }
           } catch {
-            validFilesWithDuration.push(file);
+            acceptedFiles.push(file);
           }
         } else {
-          validFilesWithDuration.push(file);
+          acceptedFiles.push(file);
         }
       }
 
-      const totalFiles = [...attachedFiles, ...validFilesWithDuration].slice(0, MAX_ATTACHED_FILES);
+      const remainingSlots = Math.max(MAX_ATTACHED_FILES - attachedFiles.length, 0);
+      if (acceptedFiles.length > remainingSlots) {
+        alert(`最多只能上传 ${MAX_ATTACHED_FILES} 个文件，超出部分已自动跳过`);
+      }
+      const totalFiles = [...attachedFiles, ...acceptedFiles.slice(0, remainingSlots)];
       setAttachedFiles(totalFiles);
     }
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    e.target.value = '';
   };
 
-  const handleAttachClick = () => {
-    fileInputRef.current?.click();
+  const handleImageAttachClick = () => {
+    imageInputRef.current?.click();
+  };
+
+  const handleVideoAttachClick = () => {
+    videoInputRef.current?.click();
   };
 
   const handleRemoveFile = (index: number) => {
@@ -502,6 +552,7 @@ export function useChat() {
     promptLangs,
     translatedPrompts,
     translating,
+    uploadLimitNotice,
 
     // Action functions
     handleSubmit,
@@ -509,13 +560,15 @@ export function useChat() {
     handleKeyDown,
     handleInput,
     handleFileSelect,
-    handleAttachClick,
+    handleImageAttachClick,
+    handleVideoAttachClick,
     handleRemoveFile,
     togglePromptLang,
     getUserContentForMessage,
     clearMessages,
 
     // Refs
-    fileInputRef,
+    imageInputRef,
+    videoInputRef,
   };
 }

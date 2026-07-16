@@ -1,8 +1,8 @@
-import { useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent } from 'react';
 import OpenAI from 'openai';
 import { Message } from '../types';
-import { MAX_ATTACHED_FILES, MAX_IMAGE_FILE_SIZE, MAX_IMAGE_FILE_SIZE_MB, MAX_VIDEO_DURATION, MAX_VIDEO_FILE_SIZE, MAX_VIDEO_FILE_SIZE_MB, generateId, fileToBase64, getVideoDuration, extractVideoFrames, isSupportedImageFile, isSupportedMediaFile, isSupportedVideoFile } from '../utils';
+import { MAX_ATTACHED_FILES, MAX_IMAGE_FILE_SIZE, MAX_VIDEO_DURATION, MAX_VIDEO_FILE_SIZE, generateId, fileToBase64, getVideoDuration, extractVideoFrames, isSupportedImageFile, isSupportedMediaFile, isSupportedVideoFile } from '../utils';
 import { systemPrompt, summarizePrompt } from '../prompts';
 
 type PromptResponse = {
@@ -12,6 +12,8 @@ type PromptResponse = {
   optimizedPrompt?: string;
   chatboxUrl?: string;
 };
+
+const UPLOAD_LIMIT_NOTICE_DURATION = 3000;
 
 function buildHistoryMessages(
   previousMessages: Message[],
@@ -89,10 +91,18 @@ export function useChat() {
   const [promptLangs, setPromptLangs] = useState<Record<string, 'zh' | 'en'>>({});
   const [translatedPrompts, setTranslatedPrompts] = useState<Record<string, string>>({});
   const [translating, setTranslating] = useState<Record<string, boolean>>({});
+  const [uploadLimitNotice, setUploadLimitNotice] = useState<string | null>(null);
 
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const textareaResizeRef = useRef<number | null>(null);
+  const uploadLimitNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (uploadLimitNoticeTimerRef.current !== null) {
+      clearTimeout(uploadLimitNoticeTimerRef.current);
+    }
+  }, []);
 
   const createOpenAIClient = () => {
     return new OpenAI({
@@ -450,11 +460,25 @@ export function useChat() {
     });
   };
 
+  const showUploadLimitNotice = () => {
+    if (uploadLimitNoticeTimerRef.current !== null) {
+      clearTimeout(uploadLimitNoticeTimerRef.current);
+    }
+
+    setUploadLimitNotice('上传文件超出容量限制');
+
+    uploadLimitNoticeTimerRef.current = setTimeout(() => {
+      setUploadLimitNotice(null);
+      uploadLimitNoticeTimerRef.current = null;
+    }, UPLOAD_LIMIT_NOTICE_DURATION);
+  };
+
   const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files) {
       const selectedFiles: File[] = Array.from(files);
       const acceptedFiles: File[] = [];
+      let hasShownSizeLimitNotice = false;
       for (const file of selectedFiles) {
         if (!isSupportedMediaFile(file)) {
           alert(`文件 "${file.name}" 格式不受支持，已自动跳过`);
@@ -462,13 +486,19 @@ export function useChat() {
         }
 
         if (isSupportedImageFile(file) && file.size > MAX_IMAGE_FILE_SIZE) {
-          alert(`图片 "${file.name}" 超过 ${MAX_IMAGE_FILE_SIZE_MB} MB 限制，已自动跳过`);
+          if (!hasShownSizeLimitNotice) {
+            showUploadLimitNotice();
+            hasShownSizeLimitNotice = true;
+          }
           continue;
         }
 
         if (isSupportedVideoFile(file)) {
           if (file.size > MAX_VIDEO_FILE_SIZE) {
-            alert(`视频 "${file.name}" 超过 ${MAX_VIDEO_FILE_SIZE_MB} MB 限制，已自动跳过`);
+            if (!hasShownSizeLimitNotice) {
+              showUploadLimitNotice();
+              hasShownSizeLimitNotice = true;
+            }
             continue;
           }
 
@@ -522,6 +552,7 @@ export function useChat() {
     promptLangs,
     translatedPrompts,
     translating,
+    uploadLimitNotice,
 
     // Action functions
     handleSubmit,
